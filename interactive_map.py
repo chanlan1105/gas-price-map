@@ -5,6 +5,7 @@ import folium
 import branca.colormap as cm
 from datetime import datetime
 from zoneinfo import ZoneInfo
+import time
 
 # Fetch data from the Regie Essence Quebec API
 data = None
@@ -22,9 +23,10 @@ while tries < MAX_TRIES:
         print("Got data")
         break
     else:
-        print("Error retrieving data")
+        print("Error retrieving data. Waiting 10 seconds...")
         print(response.status_code)
-        print(response)
+        print(response.text)
+        time.sleep(10)
 else:
     print(f"Could not fetch data after {MAX_TRIES} attempts. Exiting...")
     exit(1)
