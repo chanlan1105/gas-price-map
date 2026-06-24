@@ -46,7 +46,7 @@ jobs:
         uses: actions/upload-pages-artifact@v3
         with:
           # Upload only the generated HTML file (no need for the whole repo)
-          path: '.'
+          path: build/
 
       - name: Deploy to GitHub Pages
         id: deploy

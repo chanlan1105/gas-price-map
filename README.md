@@ -48,7 +48,7 @@ This project uses [uv](https://github.com/astral-sh/uv), a fast Python package i
    ```bash
    uv run python interactive_map.py
    ```
-   This will output a new `index.html` file in the project root.
+   This will output a new `index.html` file in the `build/` directory.
 
 4. **View the map:**
    Open the generated `index.html` in any web browser to view the interactive map.
