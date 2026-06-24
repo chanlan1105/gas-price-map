@@ -17,7 +17,11 @@ while tries < MAX_TRIES:
 
     print(f"Fetching data, attempt {tries}/{MAX_TRIES}...")
 
-    response = requests.get("https://regieessencequebec.ca/stations.geojson.gz")
+    response = requests.get(
+        "https://regieessencequebec.ca/stations.geojson.gz",
+        headers={
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        })
     if response.status_code == 200:
         data = response.json()
         print("Got data")
@@ -109,5 +113,5 @@ info_html = f"""
 """
 inter_map.get_root().html.add_child(folium.Element(info_html))
 
-inter_map.save("index.html")
-print(f"Map saved to index.html (rendered at {rendered_at})")
+inter_map.save("build/index.html")
+print(f"Map saved to build/index.html (rendered at {rendered_at})")
