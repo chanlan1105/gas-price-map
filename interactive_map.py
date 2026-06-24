@@ -6,6 +6,7 @@ import branca.colormap as cm
 from datetime import datetime
 from zoneinfo import ZoneInfo
 import time
+from pathlib import Path
 
 # Fetch data from the Regie Essence Quebec API
 data = None
@@ -113,5 +114,7 @@ info_html = f"""
 """
 inter_map.get_root().html.add_child(folium.Element(info_html))
 
+print("Saving map file...")
+Path("build").mkdir(parents=True, exist_ok=True)
 inter_map.save("build/index.html")
 print(f"Map saved to build/index.html (rendered at {rendered_at})")
