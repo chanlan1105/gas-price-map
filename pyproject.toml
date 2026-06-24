@@ -1,17 +1,18 @@
 [project]
 name = "essence"
 version = "0.1.0"
-description = "Add your description here"
+description = "Interactive gas price map for Quebec — deployed to GitHub Pages via GitHub Actions."
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "flask>=3.1.3",
+    "branca>=0.8.1",
+    "fiona>=1.10.1",
     "folium>0.14",
-    "geodatasets>=2026.5.0",
     "geopandas>=1.1.3",
-    "ipykernel>=7.2.0",
     "mapclassify>=2.10.0",
-    "matplotlib>=3.10.9",
+    "matplotlib>=3.11.0",
     "pandas>=3.0.2",
+    "pyarrow>=20.0.0",
     "requests>=2.33.1",
+    "tzdata",
 ]

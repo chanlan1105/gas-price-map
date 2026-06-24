@@ -3,20 +3,33 @@ import pandas as pd
 import requests
 import folium
 import branca.colormap as cm
-# from flask import Flask
-
-# app = Flask(__name__)
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 # Fetch data from the Regie Essence Quebec API
-response = requests.get("https://regieessencequebec.ca/stations.geojson.gz")
-if response.status_code == 200:
-    data = response.json()
+data = None
+tries = 0
+MAX_TRIES = 3
+
+while tries < MAX_TRIES:
+    tries += 1
+
+    print(f"Fetching data, attempt {tries}/{MAX_TRIES}...")
+
+    response = requests.get("https://regieessencequebec.ca/stations.geojson.gz")
+    if response.status_code == 200:
+        data = response.json()
+        print("Got data")
+        break
+    else:
+        print("Error retrieving data")
+        print(response.status_code)
+        print(response)
 else:
-    print("Error retrieving data")
-    print(response.status_code)
-    print(response.text())
+    print(f"Could not fetch data after {MAX_TRIES} attempts. Exiting...")
     exit(1)
 
+print("Parsing data into GeoDataFrame...")
 df = gpd.GeoDataFrame.from_features(data["features"])
 
 # The prices column of the df contains an array of dictionaries
@@ -58,15 +71,41 @@ colormap = cm.LinearColormap(
     vmax=stations["Régulier"].max()
 )
 
+print("Rendering interactive map...")
 inter_map: folium.Map = stations.explore(
     column="Régulier",
     cmap=colormap,
     marker_kwds=dict(radius=5, fill=True),
     marker_type="circle_marker",
-    name="Gas Stations"  # name of the layer in the map
+    name="Gas Stations",  # name of the layer in the map
 )
 
-folium.TileLayer("CartoDB positron", show=False).add_to(inter_map)
+folium.TileLayer("CartoDB positron", show=True).add_to(inter_map)
 folium.LayerControl().add_to(inter_map)
 
-inter_map.show_in_browser()
+# Inject a bottom-left info panel showing the render timestamp and data source.
+rendered_at = datetime.now(ZoneInfo("America/New_York")).strftime("%Y-%m-%d %H:%M %Z")
+info_html = f"""
+<div style="
+    position: fixed;
+    bottom: 20px; left: 20px; z-index: 9999;
+    background: rgba(255,255,255,0.88);
+    backdrop-filter: blur(6px);
+    border-radius: 8px;
+    padding: 8px 14px;
+    font-family: sans-serif;
+    font-size: 12px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.18);
+    line-height: 1.6;
+">
+    🕐 <strong>Updated:</strong> {rendered_at}<br>
+    📊 <strong>Source:</strong>&nbsp;
+    <a href="https://regieessencequebec.ca/" target="_blank" rel="noopener">
+        regieessencequebec.ca
+    </a>
+</div>
+"""
+inter_map.get_root().html.add_child(folium.Element(info_html))
+
+inter_map.save("index.html")
+print(f"Map saved to index.html (rendered at {rendered_at})")

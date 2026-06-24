@@ -11,3 +11,9 @@ wheels/
 
 # Dev files
 **/!!dev/**
+
+# Locally generated map (the real one is built & deployed by GitHub Actions)
+index.html
+
+# uv cache
+.uv/
