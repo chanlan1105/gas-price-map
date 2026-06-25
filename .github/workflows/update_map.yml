@@ -47,6 +47,7 @@ jobs:
         with:
           # Upload only the generated HTML file (no need for the whole repo)
           path: build/
+          retention-days: 1
 
       - name: Deploy to GitHub Pages
         id: deploy
