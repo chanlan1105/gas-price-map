@@ -7,6 +7,7 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 import time
 from pathlib import Path
+import shutil
 
 # Fetch data from the Regie Essence Quebec API
 data = None
@@ -60,8 +61,41 @@ df: gpd.GeoDataFrame = pd.concat([df, price_df], axis=1)
 # Set coordinate reference for basemap
 df_crs = df.set_crs(epsg=4326)
 
-REGIONS = ["Montréal", "Laval", "Montérégie", "Laurentides"]
-stations = df_crs[df_crs.Region.isin(REGIONS)].drop(columns=['PostalCode', 'Region'])
+REGIONS = ["Montréal", "Laval", "Montérégie"]
+base_stations = df_crs[df_crs.Region.isin(REGIONS)]
+
+# Include Lanaudière stations that fall within the Greater Montreal area
+# (Terrebonne, Mascouche, Repentigny, L'Assomption). Joliette, Berthierville,
+# and other northern Lanaudière cities are excluded via this bounding box.
+LANAUDIERE_BBOX = {
+    "lat_min": 45.55,
+    "lat_max": 45.90,
+    "lon_min": -73.80,
+    "lon_max": -73.30,
+}
+lanaudiere = df_crs[df_crs.Region == "Lanaudière"]
+lanaudiere_filtered = lanaudiere[
+    (lanaudiere.geometry.y >= LANAUDIERE_BBOX["lat_min"]) &
+    (lanaudiere.geometry.y <= LANAUDIERE_BBOX["lat_max"]) &
+    (lanaudiere.geometry.x >= LANAUDIERE_BBOX["lon_min"]) &
+    (lanaudiere.geometry.x <= LANAUDIERE_BBOX["lon_max"])
+]
+
+# Include Laurentides stations up to and including the Mont-Tremblant area.
+# Stations north of ~46.20°N or west of ~74.80°W are excluded (remote
+# northern/western Laurentides beyond the main Autoroute 15 corridor).
+LAURENTIDES_BBOX = {
+    "lat_max": 46.20,
+    "lon_min": -74.80,
+}
+laurentides = df_crs[df_crs.Region == "Laurentides"]
+laurentides_filtered = laurentides[
+    (laurentides.geometry.y <= LAURENTIDES_BBOX["lat_max"]) &
+    (laurentides.geometry.x >= LAURENTIDES_BBOX["lon_min"])
+]
+
+stations = pd.concat([base_stations, lanaudiere_filtered,
+                      laurentides_filtered]).drop(columns=['PostalCode', 'Region'])
 
 COLORS = [
     "#0C4415",
@@ -129,7 +163,22 @@ popover_style = """
 """
 inter_map.get_root().header.add_child(folium.Element(popover_style))
 
+# Set map page title
+inter_map.get_root().title = "Québec Real-Time Gas Map"
+
+# Add favicon link to header
+favicon_link = '<link rel="shortcut icon" href="favicon.png" type="image/png">'
+inter_map.get_root().header.add_child(folium.Element(favicon_link))
+
 print("Saving map file...")
-Path("build").mkdir(parents=True, exist_ok=True)
-inter_map.save("build/index.html")
+build_dir = Path("build")
+build_dir.mkdir(parents=True, exist_ok=True)
+inter_map.save(build_dir / "index.html")
+
+# Copy favicon to build folder
+favicon_src = Path("media/favicon.png")
+if favicon_src.exists():
+    shutil.copy(favicon_src, build_dir / "favicon.png")
+    print("Favicon copied to build/favicon.png")
+
 print(f"Map saved to build/index.html (rendered at {rendered_at})")

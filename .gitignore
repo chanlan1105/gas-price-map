@@ -10,7 +10,7 @@ wheels/
 .venv
 
 # Dev files
-**/!!dev/**
+**/!!dev
 
 # Locally generated map (the real one is built & deployed by GitHub Actions)
 build/
