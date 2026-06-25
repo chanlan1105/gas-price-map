@@ -2,8 +2,8 @@ name: Update Gas Price Map
 
 on:
   schedule:
-    # Runs every 30 minutes
-    - cron: "*/30 * * * *"
+    # Runs once an hour at the 12th minute
+    - cron: "12 * * * *"
   workflow_dispatch: # Allow manual triggers from the Actions tab
 
 # Grant the workflow the minimum permissions required for Pages deployment

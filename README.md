@@ -65,7 +65,7 @@ To add, remove, or update dependencies, use the `uv add` or `uv remove` commands
 
 ## GitHub Actions & CI/CD
 
-* **Schedule:** The cron job runs **every 30 minutes** (`*/30 * * * *`).
+* **Schedule:** The cron job runs **every hour** on the 12th minute (`12 * * * *`).
 * **Manual Trigger:** Can be triggered manually via the Actions tab in your repository (`workflow_dispatch`).
 * **Cache Management:** Employs `astral-sh/setup-uv` with caching enabled on `uv.lock` for rapid execution speeds.
 * **Serverless Deployment:** Uploads only the compiled `index.html` as a Pages artifact and deploys it using official GitHub Actions (`actions/upload-pages-artifact` and `actions/deploy-pages`). This avoids committing built HTML files back to your source branches.
