@@ -49,19 +49,19 @@ price_dict = df["Prices"].apply(
     }
 )
 
-price_df = pd.json_normalize(price_dict)
+price_df: gpd.GeoDataFrame = pd.json_normalize(price_dict)
 
 # Now remove the original column Prices from the df and 
 # concat the values we have just parsed.
 df.drop("Prices", axis=1, inplace=True)
 
-df = pd.concat([df, price_df], axis=1)
+df: gpd.GeoDataFrame = pd.concat([df, price_df], axis=1)
 
 # Set coordinate reference for basemap
 df_crs = df.set_crs(epsg=4326)
 
 REGIONS = ["Montréal", "Laval", "Montérégie", "Laurentides"]
-stations = df_crs[df_crs.Region.isin(REGIONS)]
+stations = df_crs[df_crs.Region.isin(REGIONS)].drop(columns=['PostalCode', 'Region'])
 
 COLORS = [
     "#0C4415",
@@ -113,6 +113,21 @@ info_html = f"""
 </div>
 """
 inter_map.get_root().html.add_child(folium.Element(info_html))
+
+# Inject CSS to set the font size of map element popovers (popups and tooltips) to 11px.
+popover_style = """
+<style>
+    .leaflet-popup-content,
+    .leaflet-popup-content *,
+    .leaflet-tooltip,
+    .leaflet-tooltip *,
+    .foliumtooltip,
+    .foliumtooltip * {
+        font-size: 11px !important;
+    }
+</style>
+"""
+inter_map.get_root().header.add_child(folium.Element(popover_style))
 
 print("Saving map file...")
 Path("build").mkdir(parents=True, exist_ok=True)

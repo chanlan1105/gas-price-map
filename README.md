@@ -57,11 +57,7 @@ This project uses [uv](https://github.com/astral-sh/uv), a fast Python package i
 
 ## Dependencies
 
-All packages and version constraints are defined in `pyproject.toml`:
-
-* **Data Fetching:** `requests`
-* **Data Processing & Geospatial:** `geopandas`, `pandas`, `pyarrow`, `fiona`, `tzdata`
-* **Visualization & Map Rendering:** `folium`, `branca`
+All packages and version constraints are defined in `pyproject.toml`.
 
 To add, remove, or update dependencies, use the `uv add` or `uv remove` commands, which will automatically keep `pyproject.toml` and `uv.lock` aligned.
 
