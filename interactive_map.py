@@ -365,9 +365,9 @@ verbose_marker_js = """
             return;
         }
 
-        // Rule 1: If there are many gas stations visible on the map (more than 40),
+        // Rule 1: If there are many gas stations visible on the map (more than 300),
         // none of them should show as verbose markers.
-        if (visible.length > 40) {
+        if (visible.length > 300) {
             visible.forEach(function (s) { s.circle.setStyle(s.orig); });
             return;
         }

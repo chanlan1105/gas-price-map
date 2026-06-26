@@ -10,7 +10,17 @@ The application operates as a serverless pipeline:
 3. **Output:** Generates a standalone, responsive `index.html` featuring a custom info panel with data refresh timestamps.
 4. **Deployment:** A GitHub Actions workflow ([update_map.yml](file:///c:/Users/lucas/Documents/Lucas/essence/.github/workflows/update_map.yml)) runs every 30 minutes to rebuild the map and deploy it directly to GitHub Pages without committing built HTML files back to your source branches.
 
----
+## Verbose Marker Selection Logic
+
+To prevent map overcrowding, the interactive map limits the rendering of verbose speech-bubble price markers based on station density:
+- **Density Threshold:** If there are more than 300 stations visible in the current viewport, all verbose markers are disabled and rendered as simple colored dots.
+- **Selection Process:** When the viewport contains 300 or fewer stations, a greedy algorithm selects up to 20 stations to display as verbose markers:
+  1. **Center Region Priority:** Stations within a responsive central region (radius of 35% of the minimum of map width and height) are prioritized first.
+  2. **Initial Seed:** The station closest to the map center is selected first.
+  3. **Multi-Objective Scoring:** Subsequent verbose markers are selected one by one to maximize a combined score:
+     $$\text{Score} = 0.5 \times \text{normalized\_dist} + 0.5 \times \text{normalized\_price\_diff}$$
+     where `normalized_dist` is the minimum distance to any already selected verbose marker (prioritizing geographic spread), and `normalized_price_diff` is the minimum price difference to any already selected verbose marker (prioritizing price range diversity).
+  4. **Collision Check:** Candidates are verified against existing verbose markers to prevent overlapping before placement. If slots remain, the same logic is applied to stations outside the central region.
 
 ## Local Setup & Execution
 
@@ -53,15 +63,11 @@ This project uses [uv](https://github.com/astral-sh/uv), a fast Python package i
 4. **View the map:**
    Open the generated `index.html` in any web browser to view the interactive map.
 
----
-
 ## Dependencies
 
 All packages and version constraints are defined in `pyproject.toml`.
 
 To add, remove, or update dependencies, use the `uv add` or `uv remove` commands, which will automatically keep `pyproject.toml` and `uv.lock` aligned.
-
----
 
 ## GitHub Actions & CI/CD
 
