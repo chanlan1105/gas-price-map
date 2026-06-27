@@ -188,6 +188,75 @@ popover_style = """
         overflow: visible;
         filter: drop-shadow(0 1px 4px rgba(0,0,0,0.40));
     }
+    /* User location marker and pulse effect */
+    .user-location-marker {
+        background: none !important;
+        border: none !important;
+    }
+    .blue-dot {
+        width: 14px;
+        height: 14px;
+        background-color: #007aff;
+        border: 2.5px solid #ffffff;
+        border-radius: 50%;
+        box-shadow: 0 0 5px rgba(0, 0, 0, 0.4);
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        z-index: 1000;
+    }
+    .blue-dot-pulse {
+        width: 32px;
+        height: 32px;
+        background-color: rgba(0, 122, 255, 0.25);
+        border-radius: 50%;
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        animation: pulse 1.8s infinite ease-out;
+        z-index: 999;
+        pointer-events: none;
+    }
+    @keyframes pulse {
+        0% {
+            transform: translate(-50%, -50%) scale(0.5);
+            opacity: 1;
+        }
+        100% {
+            transform: translate(-50%, -50%) scale(2.2);
+            opacity: 0;
+        }
+    }
+    /* Recenter floating action button */
+    .recenter-fab {
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        width: 48px;
+        height: 48px;
+        border-radius: 50%;
+        background-color: #ffffff;
+        border: none;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        color: #333333;
+        font-size: 20px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 9999;
+        transition: all 0.2s ease-in-out;
+    }
+    .recenter-fab:hover {
+        background-color: #f5f5f5;
+        transform: scale(1.05);
+        box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
+    }
+    .recenter-fab:active {
+        transform: scale(0.95);
+    }
 </style>
 """
 inter_map.get_root().header.add_child(folium.Element(popover_style))
@@ -643,6 +712,139 @@ verbose_marker_js = """
 </script>
 """
 inter_map.get_root().html.add_child(folium.Element(verbose_marker_js))
+
+# ---------------------------------------------------------------------------
+# Geolocation & Recenter FAB JS/HTML
+# ---------------------------------------------------------------------------
+geolocation_and_fab_html = """
+<button id="recenter-btn" class="recenter-fab" title="Recenter on my location">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="10"></circle>
+        <circle cx="12" cy="12" r="3"></circle>
+        <line x1="12" y1="1" x2="12" y2="4"></line>
+        <line x1="12" y1="20" x2="12" y2="23"></line>
+        <line x1="1" y1="12" x2="4" y2="12"></line>
+        <line x1="20" y1="12" x2="23" y2="12"></line>
+    </svg>
+</button>
+
+<script>
+(function() {
+    'use strict';
+    
+    var mapObj;
+    var userMarker = null;
+    var initialLoadHandled = false;
+    var timeoutId = null;
+
+    function getMap() {
+        if (mapObj) return mapObj;
+        for (var k in window) {
+            try {
+                var v = window[k];
+                if (v && v._leaflet_id != null
+                      && typeof v.getZoom  === 'function'
+                      && typeof v.on       === 'function') {
+                    mapObj = v;
+                    return mapObj;
+                }
+            } catch (ignore) {}
+        }
+        return null;
+    }
+
+    function fallbackToMontreal() {
+        if (initialLoadHandled) return;
+        initialLoadHandled = true;
+        if (timeoutId) {
+            clearTimeout(timeoutId);
+            timeoutId = null;
+        }
+        var m = getMap();
+        if (m) {
+            m.setView([45.5017, -73.5673], 14);
+        }
+    }
+
+    function locateUser(isInitialLoad) {
+        var m = getMap();
+        if (!m) return;
+
+        if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(
+                function(position) {
+                    if (isInitialLoad && initialLoadHandled) return;
+                    
+                    if (isInitialLoad) {
+                        initialLoadHandled = true;
+                        if (timeoutId) {
+                            clearTimeout(timeoutId);
+                            timeoutId = null;
+                        }
+                    }
+
+                    var lat = position.coords.latitude;
+                    var lng = position.coords.longitude;
+                    var latlng = [lat, lng];
+
+                    // Add/update user marker
+                    if (!userMarker) {
+                        var customIcon = L.divIcon({
+                            html: '<div class="blue-dot"></div><div class="blue-dot-pulse"></div>',
+                            className: 'user-location-marker',
+                            iconSize: [32, 32],
+                            iconAnchor: [16, 16]
+                        });
+                        userMarker = L.marker(latlng, { icon: customIcon, zIndexOffset: 1000 }).addTo(m);
+                    } else {
+                        userMarker.setLatLng(latlng);
+                    }
+
+                    // Fly/recenter map
+                    m.flyTo(latlng, 14);
+                },
+                function(error) {
+                    console.warn("Geolocation error:", error);
+                    if (isInitialLoad) {
+                        fallbackToMontreal();
+                    }
+                },
+                {
+                    enableHighAccuracy: true,
+                    timeout: 4000,
+                    maximumAge: 0
+                }
+            );
+        } else {
+            console.warn("Geolocation not supported");
+            if (isInitialLoad) {
+                fallbackToMontreal();
+            }
+        }
+    }
+
+    window.addEventListener('load', function() {
+        // Set timeout of 4 seconds for the initial load
+        timeoutId = setTimeout(function() {
+            fallbackToMontreal();
+        }, 4000);
+
+        // Wait a brief moment for map to initialize
+        setTimeout(function() {
+            locateUser(true);
+        }, 300);
+
+        var btn = document.getElementById('recenter-btn');
+        if (btn) {
+            btn.addEventListener('click', function() {
+                locateUser(false);
+            });
+        }
+    });
+})();
+</script>
+"""
+inter_map.get_root().html.add_child(folium.Element(geolocation_and_fab_html))
 
 # Set map page title
 inter_map.get_root().title = "Québec Real-Time Gas Map"
