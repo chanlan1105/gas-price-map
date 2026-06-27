@@ -14,7 +14,13 @@ The application operates as a serverless pipeline:
 
 To prevent map overcrowding, the interactive map limits the rendering of verbose speech-bubble price markers based on station density:
 - **Density Threshold:** If there are more than 300 stations visible in the current viewport, all verbose markers are disabled and rendered as simple colored dots.
-- **Selection Process:** When the viewport contains 300 or fewer stations, a greedy algorithm selects up to 20 stations to display as verbose markers:
+- **Selection Process:** When the viewport contains 300 or fewer stations, a greedy algorithm selects a dynamic number of stations (based on screen size breakpoints) to display as verbose markers:
+  - **xs/sm** (< 768px): max 8 verbose markers
+  - **md** (768px to 991px): max 14 verbose markers
+  - **lg** (992px to 1199px): max 20 verbose markers
+  - **xl+** (>= 1200px): max 25 verbose markers
+  
+  The selection algorithm prioritizes markers as follows:
   1. **Center Region Priority:** Stations within a responsive central region (radius of 35% of the minimum of map width and height) are prioritized first.
   2. **Initial Seed:** The station closest to the map center is selected first.
   3. **Multi-Objective Scoring:** Subsequent verbose markers are selected one by one to maximize a combined score:

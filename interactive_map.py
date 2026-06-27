@@ -127,6 +127,15 @@ inter_map: folium.Map = stations.explore(
     marker_kwds=dict(radius=5, fill=True),
     marker_type="circle_marker",
     name="Gas Stations",  # name of the layer in the map
+    tooltip=[
+        "Name",
+        "brand",
+        "Status",
+        "Address",
+        "Régulier",
+        "Super",
+        "Diesel"
+    ]
 )
 
 folium.TileLayer("CartoDB positron", show=True).add_to(inter_map)
@@ -206,6 +215,15 @@ verbose_marker_js = """
     var DR  = 5;    // dot radius (px)
     var GP  = 4;    // minimum gap between bounding boxes (px)
     var MIN_ZOOM = 12;  // below this zoom level, always use dots
+
+    // Determine maximum verbose markers allowed based on screen width
+    function getMaxVerboseMarkers() {
+        var w = window.innerWidth;
+        if (w < 768)   return 8;  // xs and sm
+        if (w < 992)   return 14; // md
+        if (w < 1200)  return 20; // lg
+        return 25;                // xl+
+    }
 
     var mapObj, stations = [], vLayer, timer;
 
@@ -397,9 +415,10 @@ verbose_marker_js = """
         });
 
         var selectedCount = 0;
+        var maxVerboseLimit = getMaxVerboseMarkers();
 
         function selectAndPlace(candidates) {
-            while (selectedCount < 20) {
+            while (selectedCount < maxVerboseLimit) {
                 var placeables = [];
                 candidates.forEach(function (s) {
                     if (s.selected) return;
@@ -578,6 +597,10 @@ verbose_marker_js = """
         update();
         mapObj.on('zoomend', update);
         mapObj.on('moveend', function () {
+            clearTimeout(timer);
+            timer = setTimeout(update, 200);
+        });
+        mapObj.on('resize', function () {
             clearTimeout(timer);
             timer = setTimeout(update, 200);
         });
