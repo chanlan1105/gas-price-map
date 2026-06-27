@@ -395,12 +395,41 @@ verbose_marker_js = """
         var size = mapObj.getSize();
         var R = Math.min(size.x, size.y) * 0.35; // responsive radius for center region
 
+        var meanPrice = 0;
+        var stdDev = 0;
+        if (visible.length > 0) {
+            var sum = 0;
+            visible.forEach(function (s) {
+                sum += s.price;
+            });
+            meanPrice = sum / visible.length;
+
+            var varianceSum = 0;
+            visible.forEach(function (s) {
+                varianceSum += Math.pow(s.price - meanPrice, 2);
+            });
+            stdDev = Math.sqrt(varianceSum / visible.length);
+        }
+
+        visible.forEach(function (s) {
+            s.zScore = stdDev > 0 ? (s.price - meanPrice) / stdDev : 0;
+        });
+
+        var zMin = Infinity;
+        var zMax = -Infinity;
+        visible.forEach(function (s) {
+            if (s.zScore < zMin) zMin = s.zScore;
+            if (s.zScore > zMax) zMax = s.zScore;
+        });
+
         visible.forEach(function (s) {
             s.pt = mapObj.latLngToLayerPoint(s.ll);
             s.distToCenter = Math.sqrt(Math.pow(s.pt.x - centerPt.x, 2) + Math.pow(s.pt.y - centerPt.y, 2));
             s.inCenter = (s.distToCenter <= R);
             s.selected = false;
             s.placedDir = null;
+            
+            s.cheapness = (zMax > zMin) ? (zMax - s.zScore) / (zMax - zMin) : 1.0;
         });
 
         // Split into center region vs outer region
@@ -485,7 +514,8 @@ verbose_marker_js = """
                     placeables.forEach(function (p, idx) {
                         var normD = maxDMin > 0 ? dMins[idx] / maxDMin : 1;
                         var normP = maxPMin > 0 ? pMins[idx] / maxPMin : 1;
-                        var score = 0.5 * normD + 0.5 * normP;
+                        var cheapness = p.station.cheapness;
+                        var score = 0.4 * normD + 0.4 * normP + 0.2 * cheapness;
                         if (score > bestScore) {
                             bestScore = score;
                             bestIdx = idx;

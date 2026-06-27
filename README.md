@@ -24,8 +24,10 @@ To prevent map overcrowding, the interactive map limits the rendering of verbose
   1. **Center Region Priority:** Stations within a responsive central region (radius of 35% of the minimum of map width and height) are prioritized first.
   2. **Initial Seed:** The station closest to the map center is selected first.
   3. **Multi-Objective Scoring:** Subsequent verbose markers are selected one by one to maximize a combined score:
-     $$\text{Score} = 0.5 \times \text{normalized\_dist} + 0.5 \times \text{normalized\_price\_diff}$$
-     where `normalized_dist` is the minimum distance to any already selected verbose marker (prioritizing geographic spread), and `normalized_price_diff` is the minimum price difference to any already selected verbose marker (prioritizing price range diversity).
+     $$\text{Score} = 0.4 \times \text{normalized\_dist} + 0.4 \times \text{normalized\_price\_diff} + 0.2 \times \text{cheapness}$$
+     where `normalized_dist` is the minimum distance to any already selected verbose marker (prioritizing geographic spread), `normalized_price_diff` is the minimum price difference to any already selected verbose marker (prioritizing price range diversity), and `cheapness` is defined using a linear mapping of the price's z-score within the visible station sample:
+     $$\text{cheapness} = \frac{z_{\max} - z}{z_{\max} - z_{\min}}, \quad z = \frac{\text{price} - \mu}{\sigma}$$
+     *(Note: If $z_{\max} = z_{\min}$, then $\text{cheapness} = 1.0$ for all stations).*
   4. **Collision Check:** Candidates are verified against existing verbose markers to prevent overlapping before placement. If slots remain, the same logic is applied to stations outside the central region.
 
 ## Local Setup & Execution
