@@ -283,6 +283,13 @@ class MapRenderer:
             .recenter-fab:active {
                 transform: scale(0.95);
             }
+            .fab-loading svg {
+                animation: fab-fade 0.6s infinite alternate ease-in-out;
+            }
+            @keyframes fab-fade {
+                0% { opacity: 0.3; }
+                100% { opacity: 1; }
+            }
         </style>
         """
         self.inter_map.get_root().header.add_child(folium.Element(popover_style))

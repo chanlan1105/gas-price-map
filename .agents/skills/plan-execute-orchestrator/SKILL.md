@@ -25,6 +25,8 @@ You may use `Task Lists` as you see fit.
 **Human validation:** **Never** proceed with implementation without explicit user approval of the plan.
 
 ### Phase 3: Delegation and Subagent Execution
-Delegate the execution of the plan to a separate subagent with a fresh context window---**do not** execute it yourself. Instruct the subagent that the plan provided is final and approved, and that its sole job is strict execution without re-planning.
+At this point, you must hand over the task of implementing the plan to a separate subagent with a fresh context window. Your role is simply orchestration: **do not** implement the plan yourself and **do not** generate any code blocks yourself. Instruct the subagent that the plan provided is final and approved, and that its sole job is strict execution without re-planning.
+
+Delegate the *Proposed changes* section of the plan to one subagent. Once it completes its work, delegate *verification* (if present) to a separate subagent. If verification fails, return to Phase 1 and revise the plan before delegating again. This revised plan **still requires human approval** before implementation.
 
 When spinning up a subagent, pass *only* the specific slice of the plan it is responsible for, alongside the exact target file paths. Use `/agents` to monitor background workers. Collect their finalized assets, verify their work, and merge the results into the global state.
