@@ -810,9 +810,9 @@ geolocation_and_fab_html = """
                     }
                 },
                 {
-                    enableHighAccuracy: true,
+                    enableHighAccuracy: false,
                     timeout: 4000,
-                    maximumAge: 0
+                    maximumAge: 60000
                 }
             );
         } else {
@@ -827,7 +827,7 @@ geolocation_and_fab_html = """
         // Set timeout of 4 seconds for the initial load
         timeoutId = setTimeout(function() {
             fallbackToMontreal();
-        }, 4000);
+        }, 8000);
 
         // Wait a brief moment for map to initialize
         setTimeout(function() {
