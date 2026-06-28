@@ -1,0 +1,126 @@
+<button id="recenter-btn" class="recenter-fab" title="Recenter on my location">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="10"></circle>
+        <circle cx="12" cy="12" r="3"></circle>
+        <line x1="12" y1="1" x2="12" y2="4"></line>
+        <line x1="12" y1="20" x2="12" y2="23"></line>
+        <line x1="1" y1="12" x2="4" y2="12"></line>
+        <line x1="20" y1="12" x2="23" y2="12"></line>
+    </svg>
+</button>
+
+<script>
+(function() {
+    'use strict';
+    
+    var mapObj;
+    var userMarker = null;
+    var initialLoadHandled = false;
+    var timeoutId = null;
+
+    function getMap() {
+        if (mapObj) return mapObj;
+        for (var k in window) {
+            try {
+                var v = window[k];
+                if (v && v._leaflet_id != null
+                      && typeof v.getZoom  === 'function'
+                      && typeof v.on       === 'function') {
+                    mapObj = v;
+                    return mapObj;
+                }
+            } catch (ignore) {}
+        }
+        return null;
+    }
+
+    function fallbackToMontreal() {
+        if (initialLoadHandled) return;
+        initialLoadHandled = true;
+        if (timeoutId) {
+            clearTimeout(timeoutId);
+            timeoutId = null;
+        }
+        var m = getMap();
+        if (m) {
+            m.setView([45.5017, -73.5673], 14);
+        }
+    }
+
+    function locateUser(isInitialLoad) {
+        var m = getMap();
+        if (!m) return;
+
+        if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(
+                function(position) {
+                    if (isInitialLoad && initialLoadHandled) return;
+                    
+                    if (isInitialLoad) {
+                        initialLoadHandled = true;
+                        if (timeoutId) {
+                            clearTimeout(timeoutId);
+                            timeoutId = null;
+                        }
+                    }
+
+                    var lat = position.coords.latitude;
+                    var lng = position.coords.longitude;
+                    var latlng = [lat, lng];
+
+                    // Add/update user marker
+                    if (!userMarker) {
+                        var customIcon = L.divIcon({
+                            html: '<div class="blue-dot"></div><div class="blue-dot-pulse"></div>',
+                            className: 'user-location-marker',
+                            iconSize: [32, 32],
+                            iconAnchor: [16, 16]
+                        });
+                        userMarker = L.marker(latlng, { icon: customIcon, zIndexOffset: 1000 }).addTo(m);
+                    } else {
+                        userMarker.setLatLng(latlng);
+                    }
+
+                    // Fly/recenter map
+                    m.flyTo(latlng, 14);
+                },
+                function(error) {
+                    console.warn("Geolocation error:", error);
+                    if (isInitialLoad) {
+                        fallbackToMontreal();
+                    }
+                },
+                {
+                    enableHighAccuracy: false,
+                    timeout: 4000,
+                    maximumAge: 60000
+                }
+            );
+        } else {
+            console.warn("Geolocation not supported");
+            if (isInitialLoad) {
+                fallbackToMontreal();
+            }
+        }
+    }
+
+    window.addEventListener('load', function() {
+        // Set timeout of 4 seconds for the initial load
+        timeoutId = setTimeout(function() {
+            fallbackToMontreal();
+        }, 8000);
+
+        // Wait a brief moment for map to initialize
+        setTimeout(function() {
+            locateUser(true);
+        }, 300);
+
+        var btn = document.getElementById('recenter-btn');
+        if (btn) {
+            btn.addEventListener('click', function() {
+                locateUser(false);
+            });
+        }
+    });
+})();
+</script>
