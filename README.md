@@ -46,12 +46,14 @@ This project uses [uv](https://github.com/astral-sh/uv), a fast Python package i
     ```bash
     pip install uv
     ```
+- Some packages such as `fiona` will require the GDAL development libraries.
+  - On Debian/Ubuntu: `sudo apt-get install libgdal-dev g++`
 
 ### Running Locally
 
 1. **Clone the repository:**
    ```bash
-   git clone <your-repo-url>
+   git clone git@github.com:chanlan1105/gas-price-map.git essence
    cd essence
    ```
 
@@ -79,10 +81,21 @@ To add, remove, or update dependencies, use the `uv add` or `uv remove` commands
 
 ## GitHub Actions & CI/CD
 
-* **Schedule:** The cron job runs **every hour** on the 12th minute (`12 * * * *`).
-* **Manual Trigger:** Can be triggered manually via the Actions tab in your repository (`workflow_dispatch`).
-* **Cache Management:** Employs `astral-sh/setup-uv` with caching enabled on `uv.lock` for rapid execution speeds.
-* **Serverless Deployment:** Uploads only the compiled `index.html` as a Pages artifact and deploys it using official GitHub Actions (`actions/upload-pages-artifact` and `actions/deploy-pages`). This avoids committing built HTML files back to your source branches.
+- This page can be deployed manually using the *Update Gas Price Map* GitHub workflow.
+- Alternatively, it can be triggered programmatically using the `assets/deploy-page` shell script.
+
+### Using the `assets/deploy-page` script
+1. Ensure that `uv` is installed on your system.
+
+2. Enable execute access on the script:
+   ```bash
+   chmod +x assets/deploy-page
+   ```
+
+3. Run the script:
+   ```bash
+   ./assets/deploy-page
+   ```
 
 > [!IMPORTANT]
 > **Enabling GitHub Pages Deployment:**
