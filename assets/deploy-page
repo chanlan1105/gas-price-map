@@ -1,0 +1,24 @@
+#!/bin/bash
+
+# Move to root of project
+cd $(dirname "$0")
+cd ..
+
+# Pull latest python code changes from main
+echo "[DEPLOY-PAGE] Pulling latest code changes from main..."
+git switch main
+git pull
+
+# Run python script to update HTML
+echo "[DEPLOY-PAGE] Building new map..."
+uv run interactive_map.py
+
+# Deploy build folder
+echo "[DEPLOY-PAGE] Deploying build folder..."
+cd build
+git init
+git add .
+git commit -m "Automated map update $(date +"%Y-%m-%dT%H:%M%z")"
+git push -f git@github.com:chanlan1105/gas-price-map.git build
+
+echo "[DEPLOY-PAGE] Done"
