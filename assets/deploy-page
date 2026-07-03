@@ -16,10 +16,12 @@ uv run interactive_map.py
 # Deploy build folder
 echo "[DEPLOY-PAGE] Deploying build folder..."
 cd build
-git switch -c build
+rm -rf .git
+
 git init
+git switch -C build
 git add .
 git commit -m "Automated map update $(date +"%Y-%m-%dT%H:%M%z")"
-git push -f git@github.com:chanlan1105/gas-price-map.git build
+git push -f git@github-essence:chanlan1105/gas-price-map.git build
 
 echo "[DEPLOY-PAGE] Done"

@@ -17,3 +17,7 @@ dependencies = [
     "requests>=2.33.1",
     "tzdata",
 ]
+
+[[tool.uv.index]]
+name = "piwheels"
+url = "https://www.piwheels.org/simple"
