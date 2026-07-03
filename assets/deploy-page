@@ -11,7 +11,7 @@ git pull
 
 # Run python script to update HTML
 echo "[DEPLOY-PAGE] Building new map..."
-uv run interactive_map.py
+$(which uv) run --project $(realpath .) interactive_map.py
 
 # Deploy build folder
 echo "[DEPLOY-PAGE] Deploying build folder..."
