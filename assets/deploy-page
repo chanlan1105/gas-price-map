@@ -19,7 +19,7 @@ cd build
 rm -rf .git
 
 git init
-git switch -c build
+git switch -C build
 git add .
 git commit -m "Automated map update $(date +"%Y-%m-%dT%H:%M%z")"
 git push -f git@github-essence:chanlan1105/gas-price-map.git build
