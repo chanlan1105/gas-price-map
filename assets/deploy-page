@@ -1,20 +1,26 @@
 #!/bin/bash
 
+CYAN='\e[1;36m'
+RESET='\e[0m'
+
 # Move to root of project
 cd $(dirname "$0")
 cd ..
 
+echo "-------------------"
+echo -e "${CYAN}[DEPLOY-PAGE] Running essence-deploy job at $(date +"%Y-%m-%dT%H:%M%z")${RESET}"
+
 # Pull latest python code changes from main
-echo "[DEPLOY-PAGE] Pulling latest code changes from main..."
+echo -e "[${CYAN}DEPLOY-PAGE] Pulling latest code changes from main...${RESET}"
 git switch main
 git pull
 
 # Run python script to update HTML
-echo "[DEPLOY-PAGE] Building new map..."
+echo -e "[${CYAN}DEPLOY-PAGE] Building new map...${RESET}"
 $(which uv) run --project $(realpath .) interactive_map.py
 
 # Deploy build folder
-echo "[DEPLOY-PAGE] Deploying build folder..."
+echo -e "[${CYAN}DEPLOY-PAGE] Deploying build folder...${RESET}"
 cd build
 rm -rf .git
 
@@ -24,4 +30,4 @@ git add .
 git commit -m "Automated map update $(date +"%Y-%m-%dT%H:%M%z")"
 git push -f git@github-essence:chanlan1105/gas-price-map.git build
 
-echo "[DEPLOY-PAGE] Done"
+echo -e "[${CYAN}DEPLOY-PAGE] Done${RESET}"
