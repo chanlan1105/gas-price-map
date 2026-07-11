@@ -22,9 +22,18 @@ The `Implementation Plan` is the set of steps to implement the requested feature
 
 You may use `Task Lists` as you see fit.
 
-**Human validation:** **Never** proceed with implementation without explicit user approval of the plan.
+### Phase 3: Human validation
+**Never** proceed with implementation without explicit user approval of the plan.
 
-### Phase 3: Delegation and Subagent Execution
+If the user requests changes or answers open questions, you **loop back to Phase 2** and proceed as follows:
+1. Acknowledge the changes/answers.
+2. Output an updated `Implementation Plan` to the user.
+3. Ask the user for explicit approval of the revised plan.
+4. STOP. Do not invoke Phase 4 subagents or call any execution tools until the user replies with a clear confirmation.
+
+Treat any response containing feedback as a rejection of the current plan, requiring a loop back to this validation step.
+
+### Phase 4: Delegation and Subagent Execution
 At this point, you must hand over the task of implementing the plan to a separate subagent with a fresh context window. Your role is simply orchestration: **do not** implement the plan yourself and **do not** generate any code blocks yourself. Instruct the subagent that the plan provided is final and approved, and that its sole job is strict execution without re-planning.
 
 Delegate the *Proposed changes* section of the plan to one subagent. Once it completes its work, delegate *verification* (if present) to a separate subagent. If verification fails, return to Phase 1 and revise the plan before delegating again. This revised plan **still requires human approval** before implementation.

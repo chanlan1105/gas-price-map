@@ -17,7 +17,6 @@
         var mapObj;
         var userMarker = null;
         var initialLoadHandled = false;
-        var timeoutId = null;
 
         function updateFabState(state) {
             var btn = document.getElementById('recenter-btn');
@@ -62,91 +61,90 @@
         }
 
         function fallbackToMontreal() {
-            if (initialLoadHandled) return;
             initialLoadHandled = true;
-            if (timeoutId) {
-                clearTimeout(timeoutId);
-                timeoutId = null;
-            }
+
             var m = getMap();
             if (m) {
                 m.setView([45.5017, -73.5673], 14);
             }
         }
 
-        function locateUser(isInitialLoad) {
-            updateFabState('loading');
-            var m = getMap();
-            if (!m) return;
+        /**
+         * Attempts to locate the user's position and center the map on it.
+         * @param {boolean} isInitialLoad - Whether this is the initial page load.
+         * @returns {Promise<void>} Resolves when the location is found or an error occurs.
+         */
+        async function locateUser(isInitialLoad) {
+            return new Promise((resolve, reject) => {
+                updateFabState('loading');
+                var m = getMap();
+                if (!m) return reject();
 
-            if (navigator.geolocation) {
-                navigator.geolocation.getCurrentPosition(
-                    function (position) {
-                        if (isInitialLoad && initialLoadHandled) return;
+                if (navigator.geolocation) {
+                    navigator.geolocation.getCurrentPosition(
+                        function (position) {
+                            if (isInitialLoad && initialLoadHandled) return reject();
 
-                        if (isInitialLoad) {
-                            initialLoadHandled = true;
-                            if (timeoutId) {
-                                clearTimeout(timeoutId);
-                                timeoutId = null;
+                            if (isInitialLoad) {
+                                initialLoadHandled = true;
                             }
-                        }
 
-                        var lat = position.coords.latitude;
-                        var lng = position.coords.longitude;
-                        var latlng = [lat, lng];
+                            var lat = position.coords.latitude;
+                            var lng = position.coords.longitude;
+                            var latlng = [lat, lng];
 
-                        // Add/update user marker
-                        if (!userMarker) {
-                            var customIcon = L.divIcon({
-                                html: '<div class="blue-dot"></div><div class="blue-dot-pulse"></div>',
-                                className: 'user-location-marker',
-                                iconSize: [32, 32],
-                                iconAnchor: [16, 16]
-                            });
-                            userMarker = L.marker(latlng, { icon: customIcon, zIndexOffset: 1000 }).addTo(m);
-                        } else {
-                            userMarker.setLatLng(latlng);
-                        }
+                            // Add/update user marker
+                            if (!userMarker) {
+                                var customIcon = L.divIcon({
+                                    html: '<div class="blue-dot"></div><div class="blue-dot-pulse"></div>',
+                                    className: 'user-location-marker',
+                                    iconSize: [32, 32],
+                                    iconAnchor: [16, 16]
+                                });
+                                userMarker = L.marker(latlng, { icon: customIcon, zIndexOffset: 1000 }).addTo(m);
+                            } else {
+                                userMarker.setLatLng(latlng);
+                            }
 
-                        // Fly/recenter map
-                        m.flyTo(latlng, 14);
-                        updateFabState('found');
-                    },
-                    function (error) {
-                        console.warn("Geolocation error:", error);
-                        if (error.code === error.PERMISSION_DENIED) {
-                            updateFabState('denied');
-                        } else {
-                            updateFabState('not_found');
+                            // Fly/recenter map
+                            m.flyTo(latlng, 14);
+                            updateFabState('found');
+                            resolve();
+                        },
+                        function (error) {
+                            console.warn("Geolocation error:", error);
+                            if (error.code === error.PERMISSION_DENIED) {
+                                updateFabState('denied');
+                            } else {
+                                updateFabState('not_found');
+                            }
+                            if (isInitialLoad) {
+                                fallbackToMontreal();
+                                resolve();
+                            }
+                        },
+                        {
+                            enableHighAccuracy: false,
+                            timeout: 7000,
+                            maximumAge: 60000
                         }
-                        if (isInitialLoad) {
-                            fallbackToMontreal();
-                        }
-                    },
-                    {
-                        enableHighAccuracy: false,
-                        timeout: 7000,
-                        maximumAge: 60000
+                    );
+                } else {
+                    console.warn("Geolocation not supported");
+                    updateFabState('not_found');
+                    if (isInitialLoad) {
+                        fallbackToMontreal();
+                        resolve();
                     }
-                );
-            } else {
-                console.warn("Geolocation not supported");
-                updateFabState('not_found');
-                if (isInitialLoad) {
-                    fallbackToMontreal();
                 }
-            }
+            });
         }
 
+        window.appLocateUser = locateUser;
+        window.appFallbackToMontreal = fallbackToMontreal;
+        window.appUpdateFabState = updateFabState;
+
         window.addEventListener('load', function () {
-            updateFabState('loading');
-
-            // Wait a brief moment for map to initialize
-            setTimeout(function () {
-                locateUser(true);
-            }, 300);
-
             var btn = document.getElementById('recenter-btn');
             if (btn) {
                 btn.addEventListener('click', function () {

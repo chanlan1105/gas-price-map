@@ -316,7 +316,11 @@ class MapRenderer:
         js_path = Path(__file__).parent / "assets" / "geolocation.html"
         js_content = js_path.read_text(encoding="utf-8")
 
+        startup_path = Path(__file__).parent / "assets" / "startup_ux.html"
+        startup_content = startup_path.read_text(encoding="utf-8")
+
         self.inter_map.get_root().html.add_child(folium.Element(js_content))
+        self.inter_map.get_root().html.add_child(folium.Element(startup_content))
 
     def render(self):
         self._set_colormap()
