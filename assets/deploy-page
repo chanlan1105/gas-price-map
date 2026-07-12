@@ -35,7 +35,7 @@ git push -f git@github-essence:chanlan1105/gas-price-map.git build
 # Now deploy the preview branch
 echo -e "${GREEN}[DEPLOY-PAGE] Now deploying preview branch...${RESET}"
 echo -e "${CYAN}[PREVIEW] Pulling latest code changes from development...${RESET}"
-git switch -C development
+git switch development
 git pull
 
 # Run python script on development branch
