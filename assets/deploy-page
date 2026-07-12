@@ -1,5 +1,6 @@
 #!/bin/bash
 
+GREEN='\e[1;32m'
 CYAN='\e[1;36m'
 RESET='\e[0m'
 
@@ -8,19 +9,20 @@ cd $(dirname "$0")
 cd ..
 
 echo "-------------------"
-echo -e "${CYAN}[DEPLOY-PAGE] Running essence-deploy job at $(date +"%Y-%m-%dT%H:%M%z")${RESET}"
+echo -e "${GREEN}[DEPLOY-PAGE] Running essence-deploy job at $(date +"%Y-%m-%dT%H:%M%z")${RESET}"
+echo -e "${GREEN}[DEPLOY-PAGE] Deploying production branch...${RESET}"
 
 # Pull latest python code changes from main
-echo -e "[${CYAN}DEPLOY-PAGE] Pulling latest code changes from main...${RESET}"
+echo -e "${CYAN}[PRODUCTION] Pulling latest code changes from main...${RESET}"
 git switch main
 git pull
 
 # Run python script to update HTML
-echo -e "[${CYAN}DEPLOY-PAGE] Building new map...${RESET}"
+echo -e "${CYAN}[PRODUCTION] Building new map...${RESET}"
 "$HOME/.local/bin/uv" run --project "$(pwd)" interactive_map.py
 
 # Deploy build folder
-echo -e "[${CYAN}DEPLOY-PAGE] Deploying build folder...${RESET}"
+echo -e "${CYAN}[PRODUCTION] Deploying build folder...${RESET}"
 cd build
 rm -rf .git
 
@@ -30,4 +32,25 @@ git add .
 git commit -m "Automated map update $(date +"%Y-%m-%dT%H:%M%z")"
 git push -f git@github-essence:chanlan1105/gas-price-map.git build
 
-echo -e "[${CYAN}DEPLOY-PAGE] Done${RESET}"
+# Now deploy the preview branch
+echo -e "${GREEN}[DEPLOY-PAGE] Now deploying preview branch...${RESET}"
+echo -e "${CYAN}[PREVIEW] Pulling latest code changes from development...${RESET}"
+git switch -C development
+git pull
+
+# Run python script on development branch
+echo -e "${CYAN}[PREVIEW] Building new map...${RESET}"
+"$HOME/.local/bin/uv" run --project "$(pwd)" interactive_map.py
+
+# Deploy build folder into preview branch
+echo -e "${CYAN}[PREVIEW] Deploying build folder...${RESET}"
+cd build
+rm -rf .git
+
+git init
+git switch -C preview
+git add .
+git commit -m "Automated map update $(date +"%Y-%m-%dT%H:%M%z")"
+git push -f git@github-essence:chanlan1105/gas-price-map.git preview
+
+echo -e "${GREEN}[DEPLOY-PAGE] Done${RESET}"
