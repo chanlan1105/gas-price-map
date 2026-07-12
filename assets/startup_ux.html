@@ -186,6 +186,11 @@
 </div>
 
 <script defer>
+    var isPaginationNav = !!window.location.hash;
+    if (isPaginationNav) {
+        window.appSkipRecenter = true;
+    }
+
     (function () {
         var startupOverlay = document.getElementById('startup-overlay');
         var startupIcon = document.getElementById('startup-icon');
@@ -237,6 +242,18 @@
         }
 
         window.addEventListener("load", function () {
+            if (isPaginationNav) {
+                startupOverlay.style.display = 'none';
+                if (navigator.permissions && navigator.permissions.query) {
+                    navigator.permissions.query({ name: 'geolocation' }).then(function (result) {
+                        if (result.state === 'granted' && window.appLocateUser) {
+                            window.appLocateUser(true);
+                        }
+                    });
+                }
+                return;
+            }
+
             setTimeout(function () {
                 // Unconditional initial animation
                 startupIcon.classList.add('float-in');

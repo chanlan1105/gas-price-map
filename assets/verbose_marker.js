@@ -396,7 +396,7 @@
                 && layer.feature.geometry.type === 'Point') {
 
                 var p = layer.feature.properties;
-                var price = parseFloat(p['R\u00e9gulier']);
+                var price = parseFloat(p['GAS_TYPE_PLACEHOLDER']);
                 var col = String(p['color'] || '#888888');
 
                 stations.push({

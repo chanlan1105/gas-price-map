@@ -139,20 +139,35 @@ class MapRenderer:
     __quantiles: list[float] = [0, 0.25, 0.5, 0.75, 1]
     __map_center: tuple[float, float] = (45.55, -73.60)
 
-    def __init__(self, stations: gpd.GeoDataFrame, gas_type: str = "Régulier"):
+    def __init__(self, stations: gpd.GeoDataFrame, gas_type: str = "Régulier", filename: str = "index.html"):
         self.stations = stations.copy()
         self.gas_type = gas_type
+        self.filename = filename
         self.colormap: cm.LinearColormap = None 
         self.inter_map: folium.Map = None
         self.rendered_at: str = None
 
     def _set_colormap(self):
-        quantiles_vals = self.stations[self.gas_type].quantile(self.__quantiles).tolist()
+        valid_prices = self.stations[self.gas_type].dropna()
+        if len(valid_prices) == 0:
+            quantiles_vals = [0.0, 1.0, 2.0, 3.0, 4.0]
+            vmin, vmax = 0.0, 4.0
+        else:
+            quantiles_vals = valid_prices.quantile(self.__quantiles).tolist()
+            for i in range(1, len(quantiles_vals)):
+                if quantiles_vals[i] <= quantiles_vals[i-1]:
+                    quantiles_vals[i] = quantiles_vals[i-1] + 1e-6
+            vmin = valid_prices.min()
+            vmax = max(valid_prices.max(), quantiles_vals[-1])
+            if vmin >= vmax:
+                vmax = vmin + 1.0
+                quantiles_vals = [vmin + i * 0.25 for i in range(5)]
+
         self.colormap = cm.LinearColormap(
             colors=self.COLORS,
             index=quantiles_vals,
-            vmin=self.stations[self.gas_type].min(),
-            vmax=self.stations[self.gas_type].max()
+            vmin=vmin,
+            vmax=vmax
         )
 
         self.stations["color"] = self.stations[self.gas_type].apply(
@@ -166,18 +181,26 @@ class MapRenderer:
 
         self.rendered_at = datetime.now(ZoneInfo("America/New_York")).strftime("%Y-%m-%d %H:%M %Z")
         info_html = f"""
-        <div style="
-            position: fixed;
-            bottom: 20px; left: 20px; z-index: 9999;
-            background: rgba(255,255,255,0.88);
-            backdrop-filter: blur(6px);
-            border-radius: 8px;
-            padding: 8px 14px;
-            font-family: sans-serif;
-            font-size: 12px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.18);
-            line-height: 1.6;
-        ">
+        <style>
+            .info-bubble {{
+                position: fixed;
+                bottom: 20px; left: 20px; z-index: 9999;
+                background: rgba(255,255,255,0.88);
+                backdrop-filter: blur(6px);
+                border-radius: 8px;
+                padding: 8px 14px;
+                font-family: sans-serif;
+                font-size: 12px;
+                box-shadow: 0 2px 8px rgba(0,0,0,0.18);
+                line-height: 1.6;
+            }}
+            @media (max-width: 768px) {{
+                .info-bubble {{
+                    bottom: 90px;
+                }}
+            }}
+        </style>
+        <div class="info-bubble">
             🕐 <strong>Updated:</strong> {self.rendered_at}<br>
             📊 <strong>Source:</strong>&nbsp;
             <a href="https://regieessencequebec.ca/" target="_blank" rel="noopener">
@@ -275,6 +298,11 @@ class MapRenderer:
                 z-index: 9999;
                 transition: all 0.2s ease-in-out;
             }
+            @media (max-width: 768px) {
+                .recenter-fab {
+                    bottom: 90px;
+                }
+            }
             .recenter-fab:hover {
                 background-color: #f5f5f5;
                 transform: scale(1.05);
@@ -305,6 +333,7 @@ class MapRenderer:
 
         js_path = Path(__file__).parent / "assets" / "verbose_marker.js"
         js_content = js_path.read_text(encoding="utf-8")
+        js_content = js_content.replace("GAS_TYPE_PLACEHOLDER", self.gas_type)
 
         verbose_marker_js = f"<script>{js_content}</script>"
         self.inter_map.get_root().html.add_child(folium.Element(verbose_marker_js))
@@ -322,10 +351,162 @@ class MapRenderer:
         self.inter_map.get_root().html.add_child(folium.Element(js_content))
         self.inter_map.get_root().html.add_child(folium.Element(startup_content))
 
+    def _add_footer(self):
+        """
+        Inject a unified fixed footer for seamless navigation between the three map views.
+        Uses window.location.hash to persist map pan/zoom coordinates across page loads.
+        """
+        footer_html = f"""
+        <style>
+            .map-footer {{
+                position: fixed;
+                bottom: 20px;
+                left: 50%;
+                transform: translateX(-50%);
+                width: auto;
+                height: 70px;
+                background-color: #ffffff;
+                border-top: 1px solid #e0e0e0;
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                gap: 40px;
+                z-index: 9999;
+                box-shadow: 0 -2px 10px rgba(0,0,0,0.08);
+                border-radius: 35px;
+                padding: 0 30px;
+            }}
+            .map-footer a {{
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                text-decoration: none;
+                color: #757575;
+                font-family: sans-serif;
+                font-size: 13px;
+                font-weight: 500;
+                transition: color 0.2s, transform 0.2s;
+            }}
+            .map-footer a:hover {{
+                color: #333333;
+                transform: scale(1.05);
+            }}
+            .map-footer a.active {{
+                color: #007aff;
+                pointer-events: none;
+            }}
+            .map-footer svg {{
+                width: 28px;
+                height: 28px;
+                margin-bottom: 4px;
+                fill: currentColor;
+            }}
+            @media (max-width: 768px) {{
+                .map-footer {{
+                    bottom: 0;
+                    width: 100%;
+                    border-radius: 0;
+                    padding: 0;
+                }}
+            }}
+        </style>
+        <div class="map-footer">
+            <a href="index.html" class="{'active' if self.gas_type == 'Régulier' else ''}" onclick="saveMapState(event, this.href)">
+                <svg viewBox="0 0 24 24">
+                    <rect x="2" y="4" width="20" height="16" rx="4" fill="none" stroke="currentColor" stroke-width="2"/>
+                    <text x="12" y="16" text-anchor="middle" font-size="12" font-weight="bold" font-family="sans-serif" stroke="none">87</text>
+                </svg>
+                Régulier
+            </a>
+            <a href="super.html" class="{'active' if self.gas_type == 'Super' else ''}" onclick="saveMapState(event, this.href)">
+                <svg viewBox="0 0 24 24">
+                    <rect x="2" y="4" width="20" height="16" rx="4" fill="none" stroke="currentColor" stroke-width="2"/>
+                    <text x="12" y="16" text-anchor="middle" font-size="12" font-weight="bold" font-family="sans-serif" stroke="none">91</text>
+                </svg>
+                Super
+            </a>
+            <a href="diesel.html" class="{'active' if self.gas_type == 'Diesel' else ''}" onclick="saveMapState(event, this.href)">
+                <svg viewBox="0 0 24 24">
+                    <path d="M20 8h-3V4H3c-1.1 0-2 .9-2 2v11h2c0 1.66 1.34 3 3 3s3-1.34 3-3h6c0 1.66 1.34 3 3 3s3-1.34 3-3h2v-5l-3-4zM6 18.5c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zm13.5-9l1.96 2.5H17V9.5h2.5zm-1.5 9c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5z"/>
+                </svg>
+                Diesel
+            </a>
+        </div>
+        <script>
+            // Intercept Leaflet's map initialization to seamlessly inject the URL hash view
+            if (window.L && window.L.map) {{
+                var originalLMap = window.L.map;
+                window.L.map = function(id, options) {{
+                    var hasHash = false;
+                    if (window.location.hash) {{
+                        var parts = window.location.hash.substring(1).split(',');
+                        if (parts.length === 3) {{
+                            var lat = parseFloat(parts[0]);
+                            var lng = parseFloat(parts[1]);
+                            var zoom = parseInt(parts[2], 10);
+                            if (!isNaN(lat) && !isNaN(lng) && !isNaN(zoom)) {{
+                                options.center = [lat, lng];
+                                options.zoom = zoom;
+                                hasHash = true;
+                            }}
+                        }}
+                    }}
+                    var mapInstance = originalLMap(id, options);
+                    
+                    if (hasHash) {{
+                        // Suppress the initial fitBounds call from Folium
+                        var originalFitBounds = mapInstance.fitBounds;
+                        mapInstance.fitBounds = function() {{
+                            mapInstance.fitBounds = originalFitBounds; // Restore it
+                            return mapInstance;
+                        }};
+                        setTimeout(function() {{ history.replaceState(null, null, ' '); }}, 500);
+                    }}
+                    return mapInstance;
+                }};
+            }}
+
+            function getMapInstance() {{
+                for (var key in window) {{
+                    if (window[key] && window[key]._leaflet_id && typeof window[key].getZoom === 'function') {{
+                        return window[key];
+                    }}
+                }}
+                return null;
+            }}
+            function saveMapState(e, href) {{
+                e.preventDefault();
+                var map = getMapInstance();
+                if (map) {{
+                    var center = map.getCenter();
+                    var zoom = map.getZoom();
+                    var hash = '#' + center.lat.toFixed(5) + ',' + center.lng.toFixed(5) + ',' + zoom;
+                    window.location.href = href + hash;
+                }} else {{
+                    window.location.href = href;
+                }}
+            }}
+        </script>
+        """
+        self.inter_map.get_root().html.add_child(folium.Element(footer_html))
+
     def render(self):
         self._set_colormap()
-        self.inter_map = self.stations.explore(
-            column=self.gas_type,
+        self.colormap.caption = self.gas_type
+        
+        # Monkey patch colormap to handle dummy values
+        original_rgba = self.colormap.rgba_floats_tuple
+        def safe_rgba(x):
+            if x == -9999.0:
+                return (0.533, 0.533, 0.533, 1.0)
+            return original_rgba(x)
+        self.colormap.rgba_floats_tuple = safe_rgba
+
+        explore_df = self.stations.copy()
+        explore_df["_explore_val"] = explore_df[self.gas_type].fillna(-9999.0)
+
+        self.inter_map = explore_df.explore(
+            column="_explore_val",
             cmap=self.colormap,
             marker_kwds=dict(radius=5, fill=True),
             marker_type="circle_marker",
@@ -348,6 +529,7 @@ class MapRenderer:
         self._update_popover_styles()
         self._add_verbose_marker_js()
         self._add_geolocation_js()
+        self._add_footer()
         
         # Set map page title
         self.inter_map.get_root().title = "Québec Real-Time Gas Map"
@@ -359,7 +541,7 @@ class MapRenderer:
         print("Saving map file...")
         build_dir = Path("build")
         build_dir.mkdir(parents=True, exist_ok=True)
-        self.inter_map.save(build_dir / "index.html")
+        self.inter_map.save(build_dir / self.filename)
 
         # Copy favicon to build folder
         favicon_src = Path("media/favicon.png")
@@ -367,7 +549,7 @@ class MapRenderer:
             shutil.copy(favicon_src, build_dir / "favicon.png")
             print("Favicon copied to build/favicon.png")
 
-        print(f"Map saved to build/index.html (rendered at {self.rendered_at})")
+        print(f"Map saved to build/{self.filename} (rendered at {self.rendered_at})")
         
 
 # Fetch and parse data using the class
@@ -390,5 +572,7 @@ map_data.filter_regions({
     },
 })
 
-rendered_map = MapRenderer(map_data.df)
-rendered_map.render()
+for gas_type, filename in [("Régulier", "index.html"), ("Super", "super.html"), ("Diesel", "diesel.html")]:
+    print(f"Rendering {gas_type} map...")
+    rendered_map = MapRenderer(map_data.df, gas_type=gas_type, filename=filename)
+    rendered_map.render()

@@ -107,7 +107,9 @@
                             }
 
                             // Fly/recenter map
-                            m.flyTo(latlng, 14);
+                            if (!(isInitialLoad && window.appSkipRecenter)) {
+                                m.flyTo(latlng, 14);
+                            }
                             updateFabState('found');
                             resolve();
                         },
