@@ -147,6 +147,9 @@ class MapRenderer:
         self.inter_map: folium.Map = None
         self.rendered_at: str = None
 
+        # Filter to only include stations which offer the gas type
+        self.stations = self.stations.dropna(subset=[self.gas_type])
+
     def _set_colormap(self):
         valid_prices = self.stations[self.gas_type].dropna()
         if len(valid_prices) == 0:
