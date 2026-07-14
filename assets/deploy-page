@@ -19,6 +19,7 @@ git pull
 
 # Run python script to update HTML
 echo -e "${CYAN}[PRODUCTION] Building new map...${RESET}"
+rm -rf build/*
 "$HOME/.local/bin/uv" run --project "$(pwd)" interactive_map.py
 
 # Deploy build folder
@@ -34,12 +35,15 @@ git push -f git@github-essence:chanlan1105/gas-price-map.git build
 
 # Now deploy the preview branch
 echo -e "${GREEN}[DEPLOY-PAGE] Now deploying preview branch...${RESET}"
+cd ..
+
 echo -e "${CYAN}[PREVIEW] Pulling latest code changes from development...${RESET}"
 git switch development
 git pull
 
 # Run python script on development branch
 echo -e "${CYAN}[PREVIEW] Building new map...${RESET}"
+rm -rf build/*
 "$HOME/.local/bin/uv" run --project "$(pwd)" interactive_map.py
 
 # Deploy build folder into preview branch
@@ -52,5 +56,9 @@ git switch -C preview
 git add .
 git commit -m "Automated map update $(date +"%Y-%m-%dT%H:%M%z")"
 git push -f git@github-essence:chanlan1105/gas-price-map.git preview
+
+echo -e "${GREEN}[DEPLOY-PAGE] Switch back to production branch...${RESET}"
+cd ..
+git switch main
 
 echo -e "${GREEN}[DEPLOY-PAGE] Done${RESET}"
