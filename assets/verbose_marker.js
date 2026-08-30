@@ -11,6 +11,10 @@
     var GP = 4;    // minimum gap between bounding boxes (px)
     var MIN_ZOOM = 12;  // below this zoom level, always use dots
 
+    // Fields displayed in the tooltip and popup, matching the columns
+    // passed to explore() in interactive_map.py.
+    var TOOLTIP_FIELDS = ['Name', 'brand', 'Status', 'Address', 'Régulier', 'Super', 'Diesel'];
+
     // Determine maximum verbose markers allowed based on screen width
     function getMaxVerboseMarkers() {
         var w = window.innerWidth;
@@ -41,6 +45,23 @@
         return 'rgba(' + parseInt(hex.slice(0, 2), 16) + ','
             + parseInt(hex.slice(2, 4), 16) + ','
             + parseInt(hex.slice(4, 6), 16) + ',' + a + ')';
+    }
+
+    // ── Tooltip / popup HTML builder ────────────────────────────────────────────
+    //
+    // Builds an HTML table from a GeoJSON feature's properties, matching
+    // the format that Folium's GeoJsonTooltip / GeoJsonPopup generates.
+
+    function buildInfoTable(props) {
+        var rows = '';
+        for (var i = 0; i < TOOLTIP_FIELDS.length; i++) {
+            var key = TOOLTIP_FIELDS[i];
+            var val = props[key];
+            if (val === null || val === undefined) val = '';
+            else if (typeof val === 'object') val = JSON.stringify(val);
+            rows += '<tr><th>' + key + '</th><td>' + val + '</td></tr>';
+        }
+        return '<table>' + rows + '</table>';
     }
 
     // ── SVG speech-bubble builder ──────────────────────────────────────────────
@@ -346,11 +367,12 @@
                 });
                 var m = L.marker(s.ll, { icon: ico, interactive: true });
 
-                (function (circle) {
-                    m.on('click', function () { circle.openPopup(); });
-                    m.on('mouseover', function () { circle.openTooltip(); });
-                    m.on('mouseout', function () { circle.closeTooltip(); });
-                }(s.circle));
+                // Build tooltip HTML from the station's feature
+                // properties and bind it directly to the verbose marker.
+                // We cannot proxy through the hidden circle because Leaflet
+                // refuses to show tooltips on a CircleMarker with radius 0.
+                var infoHtml = buildInfoTable(s.circle.feature.properties);
+                m.bindTooltip(infoHtml, { sticky: true, className: 'foliumtooltip' });
 
                 vLayer.addLayer(m);
             } else {
