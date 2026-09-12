@@ -525,7 +525,7 @@ class MapRenderer:
             ]
         )
 
-        cartodb_url = "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png?api_key=cb1_2lbv_1_b92d1df0645166c3311b1685"
+        cartodb_url = "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png?key=cb1_2lbv_1_b92d1df0645166c3311b1685"
         cartodb_attr = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
         folium.TileLayer(
             tiles=cartodb_url,
