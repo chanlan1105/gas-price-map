@@ -1,9 +1,9 @@
 [project]
 name = "essence"
 version = "0.1.0"
-description = "Interactive gas price map for Quebec — deployed to GitHub Pages via GitHub Actions."
+description = "Interactive gas price map for Quebec, built on a Raspberry Pi with a local price history."
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.13"
 dependencies = [
     "branca>=0.8.1",
     "fiona>=1.10.1",
@@ -23,11 +23,26 @@ dependencies = [
 [tool.uv]
 index-strategy = "unsafe-best-match"
 
+# piwheels only has compiled wheels for 32-bit ARM (the Raspberry Pi 3B+). It is explicit, so it is only
+# searched for the packages listed below, and only on ARM. Everything else, and every other platform, uses PyPI.
 [[tool.uv.index]]
 name = "piwheels"
 url = "https://www.piwheels.org/simple"
+explicit = true
 
 [[tool.uv.index]]
 name = "pypi"
 url = "https://pypi.org/simple"
 default = true
+
+[tool.uv.sources]
+contourpy = { index = "piwheels", marker = "platform_machine == 'armv7l' or platform_machine == 'armv6l'" }
+kiwisolver = { index = "piwheels", marker = "platform_machine == 'armv7l' or platform_machine == 'armv6l'" }
+markupsafe = { index = "piwheels", marker = "platform_machine == 'armv7l' or platform_machine == 'armv6l'" }
+matplotlib = { index = "piwheels", marker = "platform_machine == 'armv7l' or platform_machine == 'armv6l'" }
+numpy = { index = "piwheels", marker = "platform_machine == 'armv7l' or platform_machine == 'armv6l'" }
+pandas = { index = "piwheels", marker = "platform_machine == 'armv7l' or platform_machine == 'armv6l'" }
+pillow = { index = "piwheels", marker = "platform_machine == 'armv7l' or platform_machine == 'armv6l'" }
+scikit-learn = { index = "piwheels", marker = "platform_machine == 'armv7l' or platform_machine == 'armv6l'" }
+scipy = { index = "piwheels", marker = "platform_machine == 'armv7l' or platform_machine == 'armv6l'" }
+shapely = { index = "piwheels", marker = "platform_machine == 'armv7l' or platform_machine == 'armv6l'" }

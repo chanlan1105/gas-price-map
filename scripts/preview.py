@@ -18,7 +18,7 @@ import folium
 import pandas as pd
 
 import scripts.clustering as C
-from interactive_map import BaseMapRenderer, MapData
+from scripts.interactive_map import BaseMapRenderer, MapData
 
 # Distinct colours for adjacent clusters (the matplotlib "tab20" palette).
 PALETTE: list[str] = [

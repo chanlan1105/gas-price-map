@@ -17,3 +17,6 @@ build/
 
 # uv cache
 .uv/
+# History database and backups (live on the Pi only)
+data/
+logs/

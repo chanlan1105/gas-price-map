@@ -1,6 +1,6 @@
 # Gas Price History: Plan
 
-_Status: draft 7, 2026-11-15. Iterating._
+_Status: draft 9, 2026-11-15. Iterating._
 
 > **Keep this plan current.** Update it whenever a decision is confirmed, something is implemented, or an open question is resolved or added, and add a changelog line with the date. Do it in the same turn as the change, not later.
 
@@ -41,7 +41,7 @@ Add price history to the Quebec Gas Price Map.
 - **Connectivity graph:** 6 nearest neighbours per station, edges longer than **10 km dropped**. Connected groups of fewer than 12 stations become unclustered (60 of 961 in the prototype).
 - **Features:** `(x_km, y_km, 5 × smoothed premium)`. Premium = price minus the regional median, clipped to ±15¢ and smoothed with the median of the 7 nearest stations. This keeps single outlier stations from steering the clusters.
 - **Algorithm:** Ward agglomerative clustering restricted to the graph (clusters stay contiguous). The Ward threshold is bisected to give about 18 clusters. Clusters under 12 stations merge into their nearest neighbouring cluster.
-- **Region bounds:** `REGIONS` in `interactive_map.py` is the single source of truth for which stations are mapped and clustered; `clustering.py` imports it.
+- **Region bounds:** `REGIONS` in `scripts/interactive_map.py` is the single source of truth for which stations are mapped and clustered; `clustering.py` imports it.
 - **Labels:** non-island clusters are named after their most common municipalities, keeping only those with at least **20%** of the cluster's stations (max 2; the top one is always kept). A cluster of 30 stations in Saint-Jean-sur-Richelieu plus one or two elsewhere is just "Saint-Jean-sur-Richelieu". `cluster_names.json` overrides are planned.
 - **Freeze:** the station-to-cluster assignment is saved and versioned; new stations join the cluster of their nearest neighbours; re-fit manually or when a cluster's spread degrades.
 
@@ -63,7 +63,7 @@ Add price history to the Quebec Gas Price Map.
 - A few clusters are geographically wide (up to 40-65 km, e.g. Saint-Hyacinthe/Beloeil, Saint-Jérôme/Sainte-Agathe). A maximum diameter cap would split them.
 - The Montréal island has no separate "Downtown" cluster: the price differences there are too small for the algorithm to pick up.
 
-## Storage (proposed, not yet confirmed)
+## Storage (implemented in `scripts/history.py`, draft 9)
 
 - SQLite file on the Pi (WAL mode, daily `.backup`). About 10 days of retention, keeping the last price before the cutoff for each station.
 - Tables:
@@ -71,6 +71,7 @@ Add price history to the Quebec Gas Price Map.
   - `stations(id, key, name, brand, address, lat, lon, cluster, first_seen, last_seen)`
   - `price_changes(station_id, gas_type, price, observed_at)`, inserted only when the price differs from the last stored value
 - Size estimate: a few MB per day, far below the SD card capacity.
+- As built: DB at `data/history.sqlite` (override with `ESSENCE_DB`, git-ignored); 10-day retention keeping the boundary price; a NULL price records a fuel no longer sold; only `REGIONS`-filtered stations are stored; renamed stations are matched by coordinates; daily backups (last 7) in `data/backups/`. The preview build (development branch) runs with `--no-history` so each fetch is recorded once. A history failure never blocks the map build (non-zero exit only).
 
 ## Chart values
 
@@ -84,8 +85,8 @@ Add price history to the Quebec Gas Price Map.
 
 ## Pipeline (per run)
 
-1. Fetch + parse + filter regions (existing code)
-2. Record the run and price changes in SQLite
+1. Fetch + parse + filter regions (`main.py`, one fetch shared by everything)
+2. Record the run and price changes in SQLite (done)
 3. Assign stations to the frozen clusters
 4. Compute cluster series and export JSON
 5. Render the three maps (existing code) and deploy
@@ -107,13 +108,14 @@ Add price history to the Quebec Gas Price Map.
 ## Build order
 
 1. ~~Prototype the clustering on a snapshot~~ (done: `clustering.py` + `preview.py`, a developer-only Folium map opened in the browser for vetting clusters, built on `BaseMapRenderer` from `interactive_map.py`; end users never see the clusters themselves, only the charts)
-2. `history.py`: SQLite store (record run, change detection, retention)
-3. Cluster freezing/assignment + quality report, integrated into `interactive_map.py`
+2. ~~`history.py`: SQLite store (record run, change detection, retention)~~ (done: `scripts/history.py`, wired into `main.py`)
+3. Cluster freezing/assignment + quality report, integrated into `main.py`
 4. Export `history.json` and add the chart panel
 5. Phase 2: export per-station changes and add the slider
 
 ## Changelog
 
+- 2026-11-15: draft 9. History store implemented (`scripts/history.py`). `interactive_map.py` split into `main.py` (entry point, single fetch) and `scripts/interactive_map.py` (map code, `REGIONS`). GitHub Actions workflow removed; the Pi (cron -> `assets/deploy-page`) is the only builder. README documents the topology and Pi setup.
 - 2026-11-15: draft 8. Island naming: added a Centre-Ville reference point (replacing "Centre", which was never a primary name in the snapshot and overlapped it). Clusters now carry a second area name when 25%+ of their island stations are nearest to it, e.g. "Montréal (Nord / Centre-Ville)". At 25 clusters the island splits out a standalone Centre-Ville cluster.
 - 2026-11-15: draft 7. `preview.py` now renders a Folium map (one toggleable coloured layer per cluster, legend, hover tooltips) opened in the browser, replacing the matplotlib window. `interactive_map.py` gained `BaseMapRenderer` (shared page chrome) and a `__main__` guard, and now owns `REGIONS` for both the map and the clustering. Municipality names under 20% of a cluster are dropped from its name. README documents the clustering. Added the "keep this plan current" rule.
 - 2026-11-15: draft 6. Island clusters now use Montréal-style names (West Island, Centre-Ouest, Sud-Ouest, Centre, Nord, Est) via nearest-reference-point matching. At the default 19-cluster target the island has 6 clusters.

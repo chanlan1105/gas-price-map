@@ -403,7 +403,7 @@ class MapRenderer(BaseMapRenderer):
         Régulier price.  Stations that don't win stay as plain dots.
         """
 
-        js_path = Path(__file__).parent / "assets" / "verbose_marker.js"
+        js_path = Path(__file__).parent.parent / "assets" / "verbose_marker.js"
         js_content = js_path.read_text(encoding="utf-8")
         js_content = js_content.replace("GAS_TYPE_PLACEHOLDER", self.gas_type)
 
@@ -414,10 +414,10 @@ class MapRenderer(BaseMapRenderer):
         """
         Add geolocation and recenter FAB JS/HTML.
         """
-        js_path = Path(__file__).parent / "assets" / "geolocation.html"
+        js_path = Path(__file__).parent.parent / "assets" / "geolocation.html"
         js_content = js_path.read_text(encoding="utf-8")
 
-        startup_path = Path(__file__).parent / "assets" / "startup_ux.html"
+        startup_path = Path(__file__).parent.parent / "assets" / "startup_ux.html"
         startup_content = startup_path.read_text(encoding="utf-8")
 
         self.inter_map.get_root().html.add_child(folium.Element(js_content))
@@ -604,15 +604,3 @@ class MapRenderer(BaseMapRenderer):
         output_path = self._save()
         print(f"Map saved to {output_path} (rendered at {self.rendered_at})")
 
-
-if __name__ == "__main__":
-    # Fetch and parse data using the class
-    map_data = MapData()
-    map_data.fetch_data()
-    map_data.parse_data()
-    map_data.filter_regions(REGIONS)
-
-    for gas_type, filename in [("Régulier", "index.html"), ("Super", "super.html"), ("Diesel", "diesel.html")]:
-        print(f"Rendering {gas_type} map...")
-        rendered_map = MapRenderer(map_data.df, gas_type=gas_type, filename=filename)
-        rendered_map.render()

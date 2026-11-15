@@ -19,7 +19,7 @@ from scipy.spatial import cKDTree
 from sklearn.cluster import AgglomerativeClustering
 
 # The region bounds live in interactive_map.py so the map and the clustering always select the same stations.
-from interactive_map import REGIONS
+from scripts.interactive_map import REGIONS
 
 LAT0 = 45.5  # Reference latitude for the Greater Montreal projection.
 
