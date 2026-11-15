@@ -72,8 +72,6 @@ This project uses [uv](https://github.com/astral-sh/uv), a fast Python package i
     ```bash
     pip install uv
     ```
-- Some packages such as `fiona` will require the GDAL development libraries.
-  - On Debian/Ubuntu: `sudo apt-get install libgdal-dev g++`
 
 ### Running Locally
 
@@ -137,7 +135,7 @@ These steps prepare a fresh Raspberry Pi (Raspberry Pi OS / Debian) to build, re
 1. **System packages:**
    ```bash
    sudo apt-get update
-   sudo apt-get install git libgdal-dev g++ sqlite3
+   sudo apt-get install git g++ sqlite3
    ```
    `sqlite3` is only needed to inspect the database by hand.
 
