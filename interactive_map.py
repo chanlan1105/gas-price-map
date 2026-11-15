@@ -9,6 +9,23 @@ import time
 from pathlib import Path
 import shutil
 
+# Single source of truth for which stations are shown on the map and clustered (see MapData.filter_regions).
+REGIONS: dict[str, dict | None] = {
+    "Montréal": None,
+    "Laval": None,
+    "Montérégie": None,
+    "Lanaudière": {
+        "lat_min": 45.55,
+        "lat_max": 45.90,
+        "lon_min": -73.80,
+        "lon_max": -73.30,
+    },
+    "Laurentides": {
+        "lat_max": 46.20,
+        "lon_min": -74.80,
+    },
+}
+
 
 class MapData:
     """
@@ -125,57 +142,20 @@ class MapData:
         return self.df
 
 
-class MapRenderer:
+class BaseMapRenderer:
     """
-    A class to render the map.
+    Shared Folium page chrome (info panel, popup styling, basemap, saving) for the map renderers.
     """
-    COLORS: list[str] = [
-        "#0C4415",
-        "#39C018",
-        "#C0BD18",
-        "#D47318",
-        "#5C0C08" 
-    ]
-    __quantiles: list[float] = [0, 0.25, 0.5, 0.75, 1]
-    __map_center: tuple[float, float] = (45.55, -73.60)
+    TILE_URL: str = "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png?key=cb1_2lbv_1_b92d1df0645166c3311b1685"
+    TILE_ATTR: str = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
+    PAGE_TITLE: str = "Québec Real-Time Gas Map"
 
-    def __init__(self, stations: gpd.GeoDataFrame, gas_type: str = "Régulier", filename: str = "index.html"):
+    def __init__(self, stations: gpd.GeoDataFrame, filename: str = "index.html"):
         self.stations = stations.copy()
-        self.gas_type = gas_type
         self.filename = filename
-        self.colormap: cm.LinearColormap = None 
         self.inter_map: folium.Map = None
         self.rendered_at: str = None
 
-        # Filter to only include stations which offer the gas type
-        self.stations = self.stations.dropna(subset=[self.gas_type])
-
-    def _set_colormap(self):
-        valid_prices = self.stations[self.gas_type].dropna()
-        if len(valid_prices) == 0:
-            quantiles_vals = [0.0, 1.0, 2.0, 3.0, 4.0]
-            vmin, vmax = 0.0, 4.0
-        else:
-            quantiles_vals = valid_prices.quantile(self.__quantiles).tolist()
-            for i in range(1, len(quantiles_vals)):
-                if quantiles_vals[i] <= quantiles_vals[i-1]:
-                    quantiles_vals[i] = quantiles_vals[i-1] + 1e-6
-            vmin = valid_prices.min()
-            vmax = max(valid_prices.max(), quantiles_vals[-1])
-            if vmin >= vmax:
-                vmax = vmin + 1.0
-                quantiles_vals = [vmin + i * 0.25 for i in range(5)]
-
-        self.colormap = cm.LinearColormap(
-            colors=self.COLORS,
-            index=quantiles_vals,
-            vmin=vmin,
-            vmax=vmax
-        )
-
-        self.stations["color"] = self.stations[self.gas_type].apply(
-            lambda p: self.colormap(p)[:7] if not pd.isna(p) else "#888888"
-        )
 
     def _add_info(self):
         """
@@ -324,6 +304,95 @@ class MapRenderer:
         </style>
         """
         self.inter_map.get_root().header.add_child(folium.Element(popover_style))
+
+    def _add_tile_layer(self):
+        """
+        Add the CartoDB basemap and the layer control to the map.
+        """
+        folium.TileLayer(
+            tiles=self.TILE_URL,
+            attr=self.TILE_ATTR,
+            name="CartoDB positron",
+            show=True
+        ).add_to(self.inter_map)
+        folium.LayerControl().add_to(self.inter_map)
+
+    def _save(self, output_dir: Path = Path("build")) -> Path:
+        """
+        Set the page title and favicon, then save the map as HTML in `output_dir`.
+
+        Returns:
+        --------
+        Path
+            Path of the saved HTML file.
+        """
+        self.inter_map.get_root().title = self.PAGE_TITLE
+
+        # Add favicon link to header
+        favicon_link = '<link rel="shortcut icon" href="favicon.png" type="image/png">'
+        self.inter_map.get_root().header.add_child(folium.Element(favicon_link))
+
+        print("Saving map file...")
+        output_dir.mkdir(parents=True, exist_ok=True)
+        output_path = output_dir / self.filename
+        self.inter_map.save(output_path)
+
+        # Copy favicon next to the map
+        favicon_src = Path("media/favicon.png")
+        if favicon_src.exists():
+            shutil.copy(favicon_src, output_dir / "favicon.png")
+            print(f"Favicon copied to {output_dir / 'favicon.png'}")
+        return output_path
+
+
+class MapRenderer(BaseMapRenderer):
+    """
+    A class to render the gas price map.
+    """
+    COLORS: list[str] = [
+        "#0C4415",
+        "#39C018",
+        "#C0BD18",
+        "#D47318",
+        "#5C0C08" 
+    ]
+    __quantiles: list[float] = [0, 0.25, 0.5, 0.75, 1]
+    __map_center: tuple[float, float] = (45.55, -73.60)
+
+    def __init__(self, stations: gpd.GeoDataFrame, gas_type: str = "Régulier", filename: str = "index.html"):
+        super().__init__(stations, filename)
+        self.gas_type = gas_type
+        self.colormap: cm.LinearColormap = None
+
+        # Filter to only include stations which offer the gas type
+        self.stations = self.stations.dropna(subset=[self.gas_type])
+
+    def _set_colormap(self):
+        valid_prices = self.stations[self.gas_type].dropna()
+        if len(valid_prices) == 0:
+            quantiles_vals = [0.0, 1.0, 2.0, 3.0, 4.0]
+            vmin, vmax = 0.0, 4.0
+        else:
+            quantiles_vals = valid_prices.quantile(self.__quantiles).tolist()
+            for i in range(1, len(quantiles_vals)):
+                if quantiles_vals[i] <= quantiles_vals[i-1]:
+                    quantiles_vals[i] = quantiles_vals[i-1] + 1e-6
+            vmin = valid_prices.min()
+            vmax = max(valid_prices.max(), quantiles_vals[-1])
+            if vmin >= vmax:
+                vmax = vmin + 1.0
+                quantiles_vals = [vmin + i * 0.25 for i in range(5)]
+
+        self.colormap = cm.LinearColormap(
+            colors=self.COLORS,
+            index=quantiles_vals,
+            vmin=vmin,
+            vmax=vmax
+        )
+
+        self.stations["color"] = self.stations[self.gas_type].apply(
+            lambda p: self.colormap(p)[:7] if not pd.isna(p) else "#888888"
+        )
 
     def _add_verbose_marker_js(self):
         """
@@ -525,64 +594,25 @@ class MapRenderer:
             ]
         )
 
-        cartodb_url = "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png?key=cb1_2lbv_1_b92d1df0645166c3311b1685"
-        cartodb_attr = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
-        folium.TileLayer(
-            tiles=cartodb_url,
-            attr=cartodb_attr,
-            name="CartoDB positron",
-            show=True
-        ).add_to(self.inter_map)
-        folium.LayerControl().add_to(self.inter_map)
-
+        self._add_tile_layer()
         self._add_info()
         self._update_popover_styles()
         self._add_verbose_marker_js()
         self._add_geolocation_js()
         self._add_footer()
-        
-        # Set map page title
-        self.inter_map.get_root().title = "Québec Real-Time Gas Map"
 
-        # Add favicon link to header
-        favicon_link = '<link rel="shortcut icon" href="favicon.png" type="image/png">'
-        self.inter_map.get_root().header.add_child(folium.Element(favicon_link))
+        output_path = self._save()
+        print(f"Map saved to {output_path} (rendered at {self.rendered_at})")
 
-        print("Saving map file...")
-        build_dir = Path("build")
-        build_dir.mkdir(parents=True, exist_ok=True)
-        self.inter_map.save(build_dir / self.filename)
 
-        # Copy favicon to build folder
-        favicon_src = Path("media/favicon.png")
-        if favicon_src.exists():
-            shutil.copy(favicon_src, build_dir / "favicon.png")
-            print("Favicon copied to build/favicon.png")
+if __name__ == "__main__":
+    # Fetch and parse data using the class
+    map_data = MapData()
+    map_data.fetch_data()
+    map_data.parse_data()
+    map_data.filter_regions(REGIONS)
 
-        print(f"Map saved to build/{self.filename} (rendered at {self.rendered_at})")
-        
-
-# Fetch and parse data using the class
-map_data = MapData()
-map_data.fetch_data()
-map_data.parse_data()
-map_data.filter_regions({
-    "Montréal": None, 
-    "Laval": None, 
-    "Montérégie": None,
-    "Lanaudière": {
-        "lat_min": 45.55,
-        "lat_max": 45.90,
-        "lon_min": -73.80,
-        "lon_max": -73.30,
-    },
-    "Laurentides": {
-        "lat_max": 46.20,
-        "lon_min": -74.80,
-    },
-})
-
-for gas_type, filename in [("Régulier", "index.html"), ("Super", "super.html"), ("Diesel", "diesel.html")]:
-    print(f"Rendering {gas_type} map...")
-    rendered_map = MapRenderer(map_data.df, gas_type=gas_type, filename=filename)
-    rendered_map.render()
+    for gas_type, filename in [("Régulier", "index.html"), ("Super", "super.html"), ("Diesel", "diesel.html")]:
+        print(f"Rendering {gas_type} map...")
+        rendered_map = MapRenderer(map_data.df, gas_type=gas_type, filename=filename)
+        rendered_map.render()

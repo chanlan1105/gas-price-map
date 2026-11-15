@@ -73,6 +73,31 @@ This project uses [uv](https://github.com/astral-sh/uv), a fast Python package i
 4. **View the map:**
    Open the generated `index.html` in any web browser to view the interactive map.
 
+## Station Clustering (developer tool)
+
+`scripts/clustering.py` groups stations into price areas, so that later features (price history charts) can report one median price per area. Nothing in the deployed map depends on it yet. The same station selection as the map is used (`REGIONS` in `interactive_map.py`).
+
+### How it works
+
+1. **Features:** each station becomes `(x_km, y_km, 1.5 × smoothed price premium)`. Premium is the price minus the overall median, clipped to ±15¢ and smoothed with the median of the 7 nearest stations, so a single outlier station doesn't steer the clusters.
+2. **Connectivity graph:** every station is linked to its 6 nearest neighbours in the same region (edges over 8 km are dropped). Laurentides and Lanaudière may share clusters since they're connected by land; Montréal, Laval and Montérégie are separated by rivers.
+3. **Clustering:** Ward agglomerative clustering restricted to that graph, so clusters are geographically contiguous. The Ward threshold is searched until it yields about the target number of clusters (default 19).
+4. **Clean-up:** clusters under 12 stations merge into their nearest neighbour; clusters over 75 stations are re-split (this is what divides the dense Montréal island). Groups that remain too small or isolated, typically rural stations, stay unclustered.
+5. **Naming:** Montréal-island clusters take the nearest local area name (West Island, Centre-Ouest, Sud-Ouest, Centre-Ville, Nord, Est) from the reference points in `ISLAND_ANCHORS`. A cluster that also holds a substantial share (25%+) of stations nearer to another area gets both names, e.g. `Montréal (Nord / Centre-Ville)`, most common first (max two). Other clusters are named after their main municipalities, ignoring any with under 20% of the cluster's stations.
+
+### Previewing the clusters
+
+Run from the repository root:
+
+```bash
+uv run python -m scripts.preview [stations.geojson] [--gas Régulier] [--clusters 19] [--no-open]
+```
+
+This fetches the live feed (or reads a local GeoJSON file), prints a per-cluster quality table (size, median price, IQR, diameter), and writes a Folium map to `<temp dir>/essence_clusters/clusters.html`, which opens in your browser. Each cluster is a separate layer with its own colour; hover a station for its details. `--no-open` skips opening the browser. The output is never written to `build/`, so it isn't deployed.
+
+> [!NOTE]
+> Clusters are recomputed from the current prices every time, so names and boundaries can shift between runs. A later step will freeze the assignments.
+
 ## Dependencies
 
 All packages and version constraints are defined in `pyproject.toml`.
