@@ -21,7 +21,16 @@ GAS_TYPES: tuple[str, ...] = ("Régulier", "Super", "Diesel")
 DEFAULT_DB_PATH: Path = Path(__file__).parent.parent / "data" / "history.sqlite"
 KEEP_DAYS: int = 10  # The charts need 3-7 days; the rest is slack for re-clustering.
 KEEP_BACKUPS: int = 7
-SCHEMA_VERSION: int = 1
+SCHEMA_VERSION: int = 2
+
+# Added in schema version 2; also applied to databases created at version 1.
+_CLUSTERS_SCHEMA = """
+CREATE TABLE IF NOT EXISTS clusters (
+    id        INTEGER PRIMARY KEY,
+    name      TEXT NOT NULL,
+    is_island INTEGER NOT NULL
+);
+"""
 
 _SCHEMA = """
 CREATE TABLE runs (
@@ -148,7 +157,12 @@ def connect(path: Path | str | None = None) -> sqlite3.Connection:
     version = conn.execute("PRAGMA user_version").fetchone()[0]
     if version == 0:
         with conn:
-            conn.executescript(_SCHEMA)
+            conn.executescript(_SCHEMA + _CLUSTERS_SCHEMA)
+            conn.execute(f"PRAGMA user_version={SCHEMA_VERSION}")
+    elif version < SCHEMA_VERSION:
+        # Version 1 -> 2 only adds the clusters table, so existing data is untouched.
+        with conn:
+            conn.executescript(_CLUSTERS_SCHEMA)
             conn.execute(f"PRAGMA user_version={SCHEMA_VERSION}")
     elif version > SCHEMA_VERSION:
         conn.close()
@@ -258,6 +272,40 @@ def record_run(conn: sqlite3.Connection, stations: gpd.GeoDataFrame, fetched_at:
                     changes += 1
 
     return RunSummary(stations_seen=len(seen), new_stations=new, renamed_stations=renamed, price_changes=changes)
+
+
+def save_clusters(conn: sqlite3.Connection, labels: dict[str, int], names: dict[int, str], islands: set[int]) -> int:
+    """
+    Freezes a clustering: replaces the stored clusters and the cluster of every station.
+
+    Stations that are absent from `labels` are left unassigned (NULL) so `freeze_clusters.assign_new_stations` can place them. A label
+    of -1 records that the station was deliberately left unclustered.
+
+    Parameters
+    ----------
+    conn : sqlite3.Connection
+        Connection from `connect`.
+    labels : dict[str, int]
+        Cluster identifier of each station, keyed by `station_key`. Unclustered stations are -1.
+    names : dict[int, str]
+        Display name of each cluster identifier (at least every non-negative label).
+    islands : set[int]
+        Identifiers of the clusters that lie on the Montréal island.
+
+    Returns
+    -------
+    int
+        Number of stations whose cluster was set.
+    """
+    with conn:
+        conn.execute("DELETE FROM clusters")
+        conn.execute("UPDATE stations SET cluster = NULL")
+        conn.executemany(
+            "INSERT INTO clusters (id, name, is_island) VALUES (?, ?, ?)",
+            [(cid, name, int(cid in islands)) for cid, name in names.items()],
+        )
+        updated = conn.executemany("UPDATE stations SET cluster = ? WHERE key = ?", [(cid, key) for key, cid in labels.items()])
+    return updated.rowcount
 
 
 def prune(conn: sqlite3.Connection, keep_days: int = KEEP_DAYS, now: datetime | None = None) -> None:
