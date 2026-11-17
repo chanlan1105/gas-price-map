@@ -408,6 +408,27 @@ def _island_names(df: pd.DataFrame, island: list[int]) -> dict[int, list[str]]:
     return {c: sorted(found, key=lambda n: -found[n])[:ISLAND_MAX_NAMES] for c, found in names.items()}
 
 
+# Minimum share of Montréal-region stations for a cluster to count as being on the island.
+ISLAND_CLUSTER_SHARE = 0.6
+
+
+def island_clusters(df: pd.DataFrame) -> list[int]:
+    """Finds the clusters located mostly on the Montréal island.
+
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        Clustered station data.
+
+    Returns
+    -------
+    list[int]
+        Identifiers of the clusters where at least `ISLAND_CLUSTER_SHARE` of the stations are in the Montréal region.
+    """
+    clusters = df[df.cluster >= 0].groupby("cluster")
+    return [c for c, g in clusters if (g.region == "Montréal").mean() >= ISLAND_CLUSTER_SHARE]
+
+
 def label_clusters(df: pd.DataFrame, min_city_share: float = 0.1, max_cities: int = 2) -> dict[int, str]:
     """Assigns human-readable names to station clusters.
 
@@ -427,7 +448,7 @@ def label_clusters(df: pd.DataFrame, min_city_share: float = 0.1, max_cities: in
         Mapping from cluster identifier to display name.
     """
     clusters = df[df.cluster >= 0].groupby("cluster")
-    island = [c for c, g in clusters if (g.region == "Montréal").mean() >= 0.6]
+    island = island_clusters(df)
     island_names = _island_names(df, island) if island else {}
     names, used = {}, {}
     for c, g in clusters:
