@@ -102,19 +102,20 @@ Add price history to the Quebec Gas Price Map.
 
 1. ~~Island cluster names~~ resolved in draft 6: local names via reference points. A `cluster_names.json` override is still possible if you want finer control.
 5. **Bimodal clusters** (Saint-Jean-sur-Richelieu): accept the wide IQR band, or split by price level?
-6. **Chart UI:** where does it open (click a cluster outline, a station tooltip link, a panel)? It must not clash with the footer and recenter button on mobile.
+6. ~~Chart UI~~ resolved in draft 10: a dedicated statistics page (`stats.html`) linked from the map footer.
 7. **Phase 2 colour scale:** fixed across time or rescaled per time step?
 
 ## Build order
 
 1. ~~Prototype the clustering on a snapshot~~ (done: `clustering.py` + `preview.py`, a developer-only Folium map opened in the browser for vetting clusters, built on `BaseMapRenderer` from `interactive_map.py`; end users never see the clusters themselves, only the charts)
 2. ~~`history.py`: SQLite store (record run, change detection, retention)~~ (done: `scripts/history.py`, wired into `main.py`)
-3. Cluster freezing/assignment + quality report, integrated into `main.py`
-4. Export `history.json` and add the chart panel
+3. ~~Cluster freezing/assignment, integrated into `main.py`~~ (done, draft 10; no quality report yet)
+4. ~~Export series and add the chart~~ (done, draft 10: embedded in `stats.html`)
 5. Phase 2: export per-station changes and add the slider
 
 ## Changelog
 
+- 2026-11-15: draft 10. Statistics page implemented. Clusters are frozen into the DB by `scripts/freeze_clusters.py` (schema v2 adds a `clusters` table; `stations.cluster` is -1 for unclustered, NULL for not yet placed; new stations join the nearest clustered station within 8 km). `scripts/stats.py` embeds hourly per-cluster `{n, sum, min, max}` series and the current stations into `build/stats.html` (template `assets/stats.html`, Chart.js + Leaflet from CDNs), so there is no separate `history.json` yet. Chart shows min, max and mean (not median/IQR), Régulier only. Q6 resolved: a dedicated page, linked from the map footer. `build_colormap` in `interactive_map.py` is shared by the map and the page. `comments.guidelines.md` now covers JavaScript only; Python follows the `python-code-guidelines` skill.
 - 2026-11-15: draft 9. History store implemented (`scripts/history.py`). `interactive_map.py` split into `main.py` (entry point, single fetch) and `scripts/interactive_map.py` (map code, `REGIONS`). GitHub Actions workflow removed; the Pi (cron -> `assets/deploy-page`) is the only builder. README documents the topology and Pi setup.
 - 2026-11-15: draft 8. Island naming: added a Centre-Ville reference point (replacing "Centre", which was never a primary name in the snapshot and overlapped it). Clusters now carry a second area name when 25%+ of their island stations are nearest to it, e.g. "Montréal (Nord / Centre-Ville)". At 25 clusters the island splits out a standalone Centre-Ville cluster.
 - 2026-11-15: draft 7. `preview.py` now renders a Folium map (one toggleable coloured layer per cluster, legend, hover tooltips) opened in the browser, replacing the matplotlib window. `interactive_map.py` gained `BaseMapRenderer` (shared page chrome) and a `__main__` guard, and now owns `REGIONS` for both the map and the clustering. Municipality names under 20% of a cluster are dropped from its name. README documents the clustering. Added the "keep this plan current" rule.
