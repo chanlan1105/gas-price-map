@@ -23,12 +23,13 @@ An automated web application that visualizes gas prices in Quebec (specifically 
 
 ## Price History
 
-The database (`data/history.sqlite`, or the path in the `ESSENCE_DB` environment variable) uses WAL mode and has three tables:
+The database (`data/history.sqlite`, or the path in the `ESSENCE_DB` environment variable) uses WAL mode and has four tables:
 
 | Table | Contents |
 |---|---|
 | `runs` | One row per successful fetch (UTC timestamp). |
-| `stations` | One row per station: key (name and coordinates at 5 decimals), name, brand, address, region, coordinates, first/last seen, and a nullable `cluster` column reserved for the clustering work. |
+| `stations` | One row per station: key (name and coordinates at 5 decimals), name, brand, address, region, coordinates, first/last seen, and a nullable `cluster` column (-1 = deliberately unclustered, NULL = not placed yet). |
+| `clusters` | The frozen regions: id, name and an island flag. |
 | `price_changes` | `(station, gas type, price, observed_at)`, inserted only when a price differs from the last stored value. A NULL price means the station stopped offering that fuel. |
 
 - The price at time T is the latest change at or before T.
@@ -120,7 +121,25 @@ uv run python -m scripts.preview [stations.geojson] [--gas Régulier] [--cluster
 This fetches the live feed (or reads a local GeoJSON file), prints a per-cluster quality table (size, median price, IQR, diameter), and writes a Folium map to `<temp dir>/essence_clusters/clusters.html`, which opens in your browser. Each cluster is a separate layer with its own colour; hover a station for its details. `--no-open` skips opening the browser. The output is never written to `build/`, so it isn't deployed.
 
 > [!NOTE]
-> Clusters are recomputed from the current prices every time, so names and boundaries can shift between runs. A later step will freeze the assignments.
+> The preview recomputes the clusters from the current prices every time, so names and boundaries can shift between runs. The regions used on the site are frozen separately (below).
+
+### Freezing the regions
+
+The statistics page uses the clusters as its regions, so they are fitted once and stored in the history database:
+
+```bash
+uv run python -m scripts.freeze_clusters [--force]
+```
+
+This fetches the live feed, fits about 19 clusters on Régulier prices, and writes the `clusters` table (name, and whether the cluster is on the Montréal island) and every station's `cluster`. It refuses to run again unless `--force` is given, because refitting changes the regions. Stations that appear later join the cluster of their nearest clustered station (within 8 km, otherwise they stay unclustered) during each history run. Run this once on the Pi after deploying the new version.
+
+## Statistics Page
+
+`stats.html` (linked as "Stats" in the map footer) shows, for one region or all regions, the hourly minimum, maximum and mean Régulier price over 24 hours, 3 days or 7 days. For a single region it also shows the difference from the Greater Montréal average, and, for island regions, from the rest of the island. A minimap colours only the selected region's stations with the same colour scale as the main map.
+
+- [scripts/stats.py](scripts/stats.py) rebuilds each station's hourly price from the stored changes, summarizes it per cluster, and embeds the result in the page built from [assets/stats.html](assets/stats.html). The database is only read, so the `--no-history` preview build also gets the page.
+- The page needs the frozen clusters. Without them it only offers "All regions".
+- On narrow screens the minimap fills the screen, the region selector floats over it, and the chart and figures open as a bottom sheet.
 
 ## Dependencies
 

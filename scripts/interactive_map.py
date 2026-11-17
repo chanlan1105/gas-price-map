@@ -345,18 +345,56 @@ class BaseMapRenderer:
         return output_path
 
 
+COLORS: list[str] = [
+    "#0C4415",
+    "#39C018",
+    "#C0BD18",
+    "#D47318",
+    "#5C0C08",
+]
+QUANTILES: list[float] = [0, 0.25, 0.5, 0.75, 1]
+
+
+def build_colormap(prices: pd.Series) -> cm.LinearColormap:
+    """
+    Builds the price colour scale shared by the map and the statistics page.
+
+    The scale runs from dark green (cheap) to dark red (expensive), with its breakpoints at the quartiles of `prices`.
+
+    Parameters
+    ----------
+    prices : pandas.Series
+        Current prices of one gas type. Missing values are ignored.
+
+    Returns
+    -------
+    branca.colormap.LinearColormap
+        The colour scale.
+    """
+    valid_prices = prices.dropna()
+    if len(valid_prices) == 0:
+        quantiles_vals = [0.0, 1.0, 2.0, 3.0, 4.0]
+        vmin, vmax = 0.0, 4.0
+    else:
+        quantiles_vals = valid_prices.quantile(QUANTILES).tolist()
+        # The breakpoints must strictly increase, even when many stations share a price.
+        for i in range(1, len(quantiles_vals)):
+            if quantiles_vals[i] <= quantiles_vals[i-1]:
+                quantiles_vals[i] = quantiles_vals[i-1] + 1e-6
+        vmin = valid_prices.min()
+        vmax = max(valid_prices.max(), quantiles_vals[-1])
+        if vmin >= vmax:
+            vmax = vmin + 1.0
+            quantiles_vals = [vmin + i * 0.25 for i in range(5)]
+
+    return cm.LinearColormap(colors=COLORS, index=quantiles_vals, vmin=vmin, vmax=vmax)
+
+
 class MapRenderer(BaseMapRenderer):
     """
     A class to render the gas price map.
     """
-    COLORS: list[str] = [
-        "#0C4415",
-        "#39C018",
-        "#C0BD18",
-        "#D47318",
-        "#5C0C08" 
-    ]
-    __quantiles: list[float] = [0, 0.25, 0.5, 0.75, 1]
+    COLORS: list[str] = COLORS
     __map_center: tuple[float, float] = (45.55, -73.60)
 
     def __init__(self, stations: gpd.GeoDataFrame, gas_type: str = "Régulier", filename: str = "index.html"):
@@ -368,27 +406,7 @@ class MapRenderer(BaseMapRenderer):
         self.stations = self.stations.dropna(subset=[self.gas_type])
 
     def _set_colormap(self):
-        valid_prices = self.stations[self.gas_type].dropna()
-        if len(valid_prices) == 0:
-            quantiles_vals = [0.0, 1.0, 2.0, 3.0, 4.0]
-            vmin, vmax = 0.0, 4.0
-        else:
-            quantiles_vals = valid_prices.quantile(self.__quantiles).tolist()
-            for i in range(1, len(quantiles_vals)):
-                if quantiles_vals[i] <= quantiles_vals[i-1]:
-                    quantiles_vals[i] = quantiles_vals[i-1] + 1e-6
-            vmin = valid_prices.min()
-            vmax = max(valid_prices.max(), quantiles_vals[-1])
-            if vmin >= vmax:
-                vmax = vmin + 1.0
-                quantiles_vals = [vmin + i * 0.25 for i in range(5)]
-
-        self.colormap = cm.LinearColormap(
-            colors=self.COLORS,
-            index=quantiles_vals,
-            vmin=vmin,
-            vmax=vmax
-        )
+        self.colormap = build_colormap(self.stations[self.gas_type])
 
         self.stations["color"] = self.stations[self.gas_type].apply(
             lambda p: self.colormap(p)[:7] if not pd.isna(p) else "#888888"
@@ -479,6 +497,7 @@ class MapRenderer(BaseMapRenderer):
                     width: 100%;
                     border-radius: 0;
                     padding: 0;
+                    gap: 24px;
                 }}
             }}
         </style>
@@ -502,6 +521,12 @@ class MapRenderer(BaseMapRenderer):
                     <path d="M20 8h-3V4H3c-1.1 0-2 .9-2 2v11h2c0 1.66 1.34 3 3 3s3-1.34 3-3h6c0 1.66 1.34 3 3 3s3-1.34 3-3h2v-5l-3-4zM6 18.5c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zm13.5-9l1.96 2.5H17V9.5h2.5zm-1.5 9c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5z"/>
                 </svg>
                 Diesel
+            </a>
+            <a href="stats.html">
+                <svg viewBox="0 0 24 24">
+                    <path d="M4 20V10h4v10H4zm6 0V4h4v16h-4zm6 0v-7h4v7h-4z"/>
+                </svg>
+                Stats
             </a>
         </div>
         <script>

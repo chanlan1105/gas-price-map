@@ -7,7 +7,7 @@ import argparse
 import sys
 from datetime import datetime, timezone
 
-from scripts import history
+from scripts import freeze_clusters, history, stats
 from scripts.interactive_map import REGIONS, MapData, MapRenderer
 
 # Maps each gas type to the page it is rendered on.
@@ -28,6 +28,9 @@ def record_history(map_data: MapData, fetched_at: datetime) -> None:
     conn = history.connect()
     try:
         summary = history.record_run(conn, map_data.df, fetched_at)
+        placed = freeze_clusters.assign_new_stations(conn)
+        if placed:
+            print(f"History: placed {placed} new stations in frozen clusters")
         print(
             f"History: {summary.stations_seen} stations, {summary.new_stations} new, "
             f"{summary.renamed_stations} renamed, {summary.price_changes} price changes"
@@ -38,6 +41,21 @@ def record_history(map_data: MapData, fetched_at: datetime) -> None:
             print(f"History backup written to {backup_path}")
     finally:
         conn.close()
+
+
+def render_statistics() -> None:
+    """
+    Builds ``stats.html`` from the history database, which is only read.
+    """
+    conn = history.connect()
+    try:
+        data = stats.build_stats(conn)
+    finally:
+        conn.close()
+    if data is None:
+        print("Statistics page skipped: no history recorded yet")
+        return
+    print(f"Statistics page saved to {stats.render_stats_page(data)}")
 
 
 def main() -> int:
@@ -74,6 +92,14 @@ def main() -> int:
     for gas_type, filename in MAP_FILES.items():
         print(f"Rendering {gas_type} map...")
         MapRenderer(map_data.df, gas_type=gas_type, filename=filename).render()
+
+    # --- Render the statistics page ----------------------------------------------------
+    # Also runs with --no-history (it only reads the database), but a failure must not stop the deploy.
+    try:
+        render_statistics()
+    except Exception as exc:  # noqa: BLE001 - sqlite, disk or pandas failures must not stop the maps
+        print(f"Statistics page failed: {exc!r}", file=sys.stderr)
+        exit_code = 1
 
     return exit_code
 
