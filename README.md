@@ -102,26 +102,29 @@ This project uses [uv](https://github.com/astral-sh/uv), a fast Python package i
 
 `scripts/clustering.py` groups stations into price areas, so that later features (price history charts) can report one median price per area. Nothing in the deployed map depends on it yet. The same station selection as the map is used (`REGIONS` in `scripts/interactive_map.py`).
 
+> [!NOTE]
+> **Clusters are fitted on price history.** A single price snapshot cannot tell whether stations in a cluster *move together over a day*, and a snapshot's quality depends on the time of day it was taken, so the clusters are fitted on each station's hourly premium over the last 3 days of the history database (or all of it, if shorter, and at least 24 hours). The analysis, with its scripts, data and figures, is in [design/history/clustering](design/history/clustering/README.md), and the design and status are in [design/history/plan.md](design/history/plan.md). Only Régulier is clustered.
+
 ### How it works
 
-1. **Features:** each station becomes `(x_km, y_km, 1.5 × smoothed price premium)`. Premium is the price minus the overall median, clipped to ±15¢ and smoothed with the median of the 7 nearest stations, so a single outlier station doesn't steer the clusters.
+1. **Features:** each station becomes `(x_km, y_km, 3 × premium trajectory / √hours)`. The trajectory is the station's hourly Régulier price minus the market median at the same hour (so the daily price cycle cancels), clipped to ±15¢ and smoothed with the median of the 7 nearest stations at each hour, so a single outlier station doesn't steer the clusters. Dividing by √hours makes the weight 3 mean "an RMS premium difference of 3¢ counts as much as 1 km" whatever the window length. Stations with prices for under half of the window are not fitted and are placed by proximity afterwards. A preview with `--snapshot` uses the old features, `(x_km, y_km, 1.5 × smoothed premium)` from the current prices only.
 2. **Connectivity graph:** every station is linked to its 6 nearest neighbours in the same region (edges over 8 km are dropped). Laurentides and Lanaudière may share clusters since they're connected by land; Montréal, Laval and Montérégie are separated by rivers.
 3. **Clustering:** Ward agglomerative clustering restricted to that graph, so clusters are geographically contiguous. The Ward threshold is searched until it yields about the target number of clusters (default 19).
 4. **Clean-up:** clusters under 12 stations merge into their nearest neighbour; clusters over 75 stations are re-split (this is what divides the dense Montréal island). Groups that remain too small or isolated, typically rural stations, stay unclustered.
-5. **Naming:** Montréal-island clusters take the nearest local area name (West Island, Centre-Ouest, Sud-Ouest, Centre-Ville, Nord, Est) from the reference points in `ISLAND_ANCHORS`. A cluster that also holds a substantial share (25%+) of stations nearer to another area gets both names, e.g. `Montréal (Nord / Centre-Ville)`, most common first (max two). Other clusters are named after their main municipalities, ignoring any with under 20% of the cluster's stations.
+5. **Naming:** Montréal-island clusters take the nearest local area name (West Island, Centre-Ouest, Sud-Ouest, Centre-Ville, Centre-Est, Nord, Est) from the reference points in `ISLAND_ANCHORS`. A cluster that also holds a substantial share (25%+) of stations nearer to another area gets both names, e.g. `Montréal (Nord / Centre-Ville)`, most common first (max two). A cluster named exactly `Centre-Est / Centre-Ouest` (either order) is renamed `Centre`. Other clusters are named after their main municipalities, ignoring any with under 20% of the cluster's stations.
 
 ### Previewing the clusters
 
 Run from the repository root:
 
 ```bash
-uv run python -m scripts.preview [stations.geojson] [--gas Régulier] [--clusters 19] [--no-open]
+uv run python -m scripts.preview [stations.geojson] [--history | --snapshot] [--gas Régulier] [--clusters 19] [--no-open]
 ```
 
-This fetches the live feed (or reads a local GeoJSON file), prints a per-cluster quality table (size, median price, IQR, diameter), and writes a Folium map to `<temp dir>/essence_clusters/clusters.html`, which opens in your browser. Each cluster is a separate layer with its own colour; hover a station for its details. `--no-open` skips opening the browser. The output is never written to `build/`, so it isn't deployed.
+By default this fits on the stored history (the same fit as the freeze below, read from the database) when it holds at least 24 hours; `--snapshot` fetches the live feed instead (a GeoJSON file always means a snapshot fit), to compare the two. It prints a per-cluster quality table (size, median price, IQR, diameter, and for a history fit the mean correlation of movement between the cluster's stations), the in-sample and out-of-sample scores of a history fit (fitted on one half of the window and scored on the other), and writes a Folium map to `<temp dir>/essence_clusters/clusters.html`, which opens in your browser. Each cluster is a separate layer with its own colour; hover a station for its details. `--no-open` skips opening the browser. The output is never written to `build/`, so it isn't deployed.
 
 > [!NOTE]
-> The preview recomputes the clusters from the current prices every time, so names and boundaries can shift between runs. The regions used on the site are frozen separately (below).
+> The preview recomputes the clusters from the current history every time, so names and boundaries can shift between runs. The regions used on the site are frozen separately (below).
 
 ### Freezing the regions
 
@@ -131,13 +134,13 @@ The statistics page uses the clusters as its regions, so they are fitted once an
 uv run python -m scripts.freeze_clusters [--force]
 ```
 
-This fetches the live feed, fits about 19 clusters on Régulier prices, and writes the `clusters` table (name, and whether the cluster is on the Montréal island) and every station's `cluster`. It refuses to run again unless `--force` is given, because refitting changes the regions. Stations that appear later join the cluster of their nearest clustered station (within 8 km, otherwise they stay unclustered) during each history run. Run this once on the Pi after deploying the new version.
+This reads the history database (no network), fits about 19 clusters on the last 3 days of hourly Régulier prices, refuses to run on less than 24 hours of history, prints the quality scores, and writes the `clusters` table (name, and whether the cluster is on the Montréal island) and every station's `cluster`. It refuses to run again unless `--force` is given, because refitting changes the regions. Stations that appear later join the cluster of their nearest clustered station (within 8 km, otherwise they stay unclustered) during each history run. Run this once on the Pi after deploying the new version.
 
 ## Statistics Page
 
 `stats.html` (linked as "Stats" in the map footer) shows, for one region or all regions, the hourly minimum, maximum and mean Régulier price over 24 hours, 3 days or 7 days. For a single region it also shows the difference from the Greater Montréal average, and, for island regions, from the rest of the island. A minimap colours only the selected region's stations with the same colour scale as the main map.
 
-- [scripts/stats.py](scripts/stats.py) rebuilds each station's hourly price from the stored changes, summarizes it per cluster, and embeds the result in the page built from [assets/stats.html](assets/stats.html). The database is only read, so the `--no-history` preview build also gets the page.
+- [scripts/stats.py](scripts/stats.py) rebuilds each station's hourly price from the stored changes (`history.hourly_prices`, also used by the clustering), summarizes it per cluster, and embeds the result in the page built from [assets/stats.html](assets/stats.html). The database is only read, so the `--no-history` preview build also gets the page.
 - The page needs the frozen clusters. Without them it only offers "All regions".
 - On narrow screens the minimap fills the screen, the region selector floats over it, and the chart and figures open as a bottom sheet.
 
