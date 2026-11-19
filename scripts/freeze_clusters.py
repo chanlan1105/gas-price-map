@@ -1,9 +1,10 @@
 """
 Freezes the station clusters used as regions on the statistics page.
 
-Run once with ``uv run python -m scripts.freeze_clusters``. The clustering is fitted on the current Régulier prices and stored in the
-history database, so the regions stay stable while prices move. Stations that appear later are placed in the nearest frozen cluster by
-`assign_new_stations`.
+Run once with ``uv run python -m scripts.freeze_clusters``. The clustering is fitted on the hourly Régulier price history of the
+last `FIT_DAYS` days (or all of it, if shorter) and stored in the history database, so the regions stay stable while prices move.
+The fit reads only the database, so it needs no network and can be reproduced from a backup. Stations that appear later are placed
+in the nearest frozen cluster by `assign_new_stations`.
 """
 from __future__ import annotations
 
@@ -14,11 +15,12 @@ import numpy as np
 from scipy.spatial import cKDTree
 
 from scripts import history
-from scripts.clustering import LAT0, Params, fit_target, island_clusters, label_clusters, load_stations_data
-from scripts.interactive_map import MapData
+from scripts.clustering import LAT0, Params, fit_target, island_clusters, label_clusters, load_history_fit, quality_lines, report
 
 TARGET_CLUSTERS: int = 19  # Matches the cluster preview's default.
-FIT_GAS_TYPE: str = "Régulier"  # One cluster set is shared by every fuel.
+FIT_GAS_TYPE: str = "Régulier"  # The only fuel in scope.
+FIT_DAYS: int = 3  # The fit uses the most recent days of history, or all there is if less.
+MIN_FIT_HOURS: int = 24  # Less history than this cannot show the daily cycle, so freezing is refused.
 
 
 def _project(lon: np.ndarray, lat: np.ndarray) -> np.ndarray:
@@ -101,7 +103,7 @@ def assign_new_stations(conn: sqlite3.Connection, max_edge_km: float | None = No
 
 def freeze(conn: sqlite3.Connection, force: bool = False) -> int:
     """
-    Fits clusters on the live feed and stores them.
+    Fits clusters on the stored price history and stores them.
 
     Parameters
     ----------
@@ -118,27 +120,30 @@ def freeze(conn: sqlite3.Connection, force: bool = False) -> int:
     Raises
     ------
     RuntimeError
-        If clusters are already frozen and `force` is False.
+        If clusters are already frozen and `force` is False, or if the database holds less than `MIN_FIT_HOURS` of history.
     """
     if has_frozen_clusters(conn) and not force:
         raise RuntimeError("Clusters are already frozen; pass --force to refit them (the regions will change).")
+    available = history.span_hours(conn)
+    if available < MIN_FIT_HOURS:
+        raise RuntimeError(f"Only {available:.0f} h of history; at least {MIN_FIT_HOURS} h are needed to fit clusters.")
 
-    # --- Fit on the live feed ----------------------------------------------------------
-    map_data = MapData()
-    map_data.fetch_data()
-    stations = load_stations_data(map_data.data, FIT_GAS_TYPE)
-    clustered, count, threshold = fit_target(stations, FIT_GAS_TYPE, Params(), TARGET_CLUSTERS)
+    # --- Fit on the stored history -----------------------------------------------------
+    stations, premium = load_history_fit(conn, FIT_DAYS, FIT_GAS_TYPE)
+    params = Params()
+    clustered, count, threshold = fit_target(stations, FIT_GAS_TYPE, params, TARGET_CLUSTERS, premium)
     print(f"Fitted {count} clusters (Ward threshold {threshold:.1f})")
+    print("\n".join(quality_lines(clustered, FIT_GAS_TYPE, params, TARGET_CLUSTERS, premium)))
 
-    # --- Store the clusters, then place stations the fit did not cover -----------------
-    # The history key collapses whitespace in names, so it is rebuilt here instead of reusing the clustering's own key.
-    labels = {
-        history.station_key(row.name, row.lon, row.lat): int(row.cluster) for row in clustered.itertuples(index=False)
-    }
+    # --- Store the clusters, then place the stations the fit did not cover -------------
+    # Stations without enough priced hours are left out of the labels (NULL), so they are placed by proximity like new stations.
+    fitted = clustered[clustered.fitted]
+    labels = {row.key: int(row.cluster) for row in fitted.itertuples(index=False)}
     names = label_clusters(clustered)
     saved = history.save_clusters(conn, labels, names, set(island_clusters(clustered)))
     extra = assign_new_stations(conn)
     print(f"Stored {len(names)} clusters for {saved} stations; assigned {extra} more by proximity")
+    print(report(clustered, FIT_GAS_TYPE, premium).assign(name=lambda r: r.index.map(names)).to_string())
     return len(names)
 
 
