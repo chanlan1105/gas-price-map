@@ -15,6 +15,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import geopandas as gpd
+import numpy as np
 import pandas as pd
 
 GAS_TYPES: tuple[str, ...] = ("Régulier", "Super", "Diesel")
@@ -306,6 +307,116 @@ def save_clusters(conn: sqlite3.Connection, labels: dict[str, int], names: dict[
         )
         updated = conn.executemany("UPDATE stations SET cluster = ? WHERE key = ?", [(cid, key) for key, cid in labels.items()])
     return updated.rowcount
+
+
+def epoch_seconds(stamps: pd.Series) -> np.ndarray:
+    """
+    Converts stored UTC timestamp strings to epoch seconds.
+
+    Parameters
+    ----------
+    stamps : pandas.Series
+        Timestamps such as ``2026-11-15T14:30:00Z``.
+
+    Returns
+    -------
+    numpy.ndarray
+        Seconds since the Unix epoch, as floats.
+    """
+    parsed = pd.to_datetime(stamps, utc=True)
+    return ((parsed - pd.Timestamp("1970-01-01", tz="UTC")) / pd.Timedelta(seconds=1)).to_numpy()
+
+
+def hourly_prices(conn: sqlite3.Connection, gas_type: str, grid: np.ndarray) -> tuple[pd.DataFrame, np.ndarray]:
+    """
+    Rebuilds every station's price at each time on a grid from the stored changes.
+
+    Parameters
+    ----------
+    conn : sqlite3.Connection
+        Connection from `history.connect`.
+    gas_type : str
+        Fuel to rebuild.
+    grid : numpy.ndarray
+        Epoch seconds, ascending, at which to sample the prices.
+
+    Returns
+    -------
+    stations : pandas.DataFrame
+        Stations still in the feed (columns id, name, brand, address, region, lat, lon, cluster), in the row order of the matrix.
+    prices : numpy.ndarray
+        Array of shape (stations, grid) with NaN where a station had no known price (not yet seen, or no longer sold).
+    """
+    # --- Load the stations that are still in the latest run ----------------------------
+    stations = pd.read_sql_query(
+        "SELECT id, name, brand, address, region, lat, lon, cluster FROM stations "
+        "WHERE last_seen = (SELECT MAX(fetched_at) FROM runs) ORDER BY id",
+        conn,
+    )
+    changes = pd.read_sql_query(
+        "SELECT station_id, price, observed_at FROM price_changes WHERE gas_type = ? ORDER BY station_id, observed_at",
+        conn,
+        params=(gas_type,),
+    )
+    changes["t"] = epoch_seconds(changes["observed_at"])
+    by_station = {sid: g for sid, g in changes.groupby("station_id")}
+
+    # --- Sample each station's step function on the grid -------------------------------
+    prices = np.full((len(stations), len(grid)), np.nan)
+    for row, sid in enumerate(stations["id"]):
+        g = by_station.get(sid)
+        if g is None:
+            continue
+        # The price at T is the last change at or before T; earlier than the first change, the price is unknown.
+        idx = np.searchsorted(g["t"].to_numpy(), grid, side="right") - 1
+        values = g["price"].to_numpy(dtype=float)
+        prices[row] = np.where(idx >= 0, values[np.maximum(idx, 0)], np.nan)
+    return stations, prices
+
+
+def fit_grid(conn: sqlite3.Connection, days: int) -> np.ndarray | None:
+    """
+    Builds the hourly sampling grid for the most recent `days` days of history.
+
+    The grid ends at the latest run and starts `days` days earlier, or at the first run if there is less history than that.
+
+    Parameters
+    ----------
+    conn : sqlite3.Connection
+        Connection from `connect`.
+    days : int
+        Maximum window length in days.
+
+    Returns
+    -------
+    numpy.ndarray or None
+        Epoch seconds, ascending, one per hour. None if no run has been recorded.
+    """
+    first, latest = conn.execute("SELECT MIN(fetched_at), MAX(fetched_at) FROM runs").fetchone()
+    if latest is None:
+        return None
+    end = datetime.strptime(latest, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc).timestamp()
+    start = max(datetime.strptime(first, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc).timestamp(), end - days * 86400)
+    hours = int((end - start) // 3600)
+    return end - 3600.0 * np.arange(hours, -1, -1)
+
+
+def span_hours(conn: sqlite3.Connection) -> float:
+    """
+    Measures how much history the database holds.
+
+    Parameters
+    ----------
+    conn : sqlite3.Connection
+        Connection from `connect`.
+
+    Returns
+    -------
+    float
+        Hours between the first and the latest recorded run; 0 if no run has been recorded.
+    """
+    grid = fit_grid(conn, KEEP_DAYS)
+    return 0.0 if grid is None else float(grid[-1] - grid[0]) / 3600
 
 
 def prune(conn: sqlite3.Connection, keep_days: int = KEEP_DAYS, now: datetime | None = None) -> None:

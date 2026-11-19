@@ -15,6 +15,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from scripts.history import hourly_prices
 from scripts.interactive_map import COLORS, build_colormap
 
 STATS_GAS_TYPE: str = "Régulier"
@@ -22,24 +23,6 @@ HISTORY_DAYS: int = 7  # The longest window on the page.
 UNCLUSTERED: int = -1  # Series id for stations that belong to no cluster.
 TEMPLATE_PATH: Path = Path(__file__).parent.parent / "assets" / "stats.html"
 DATA_PLACEHOLDER: str = "__STATS_DATA__"
-
-
-def _epoch_seconds(stamps: pd.Series) -> np.ndarray:
-    """
-    Converts stored UTC timestamp strings to epoch seconds.
-
-    Parameters
-    ----------
-    stamps : pandas.Series
-        Timestamps such as ``2026-11-15T14:30:00Z``.
-
-    Returns
-    -------
-    numpy.ndarray
-        Seconds since the Unix epoch, as floats.
-    """
-    parsed = pd.to_datetime(stamps, utc=True)
-    return ((parsed - pd.Timestamp("1970-01-01", tz="UTC")) / pd.Timedelta(seconds=1)).to_numpy()
 
 
 def _json_list(values: np.ndarray, digits: int = 2) -> list[float | None]:
@@ -59,53 +42,6 @@ def _json_list(values: np.ndarray, digits: int = 2) -> list[float | None]:
         Rounded values with None in place of NaN.
     """
     return [None if np.isnan(v) else round(float(v), digits) for v in values]
-
-
-def hourly_prices(conn: sqlite3.Connection, gas_type: str, grid: np.ndarray) -> tuple[pd.DataFrame, np.ndarray]:
-    """
-    Rebuilds every station's price at each time on a grid from the stored changes.
-
-    Parameters
-    ----------
-    conn : sqlite3.Connection
-        Connection from `history.connect`.
-    gas_type : str
-        Fuel to rebuild.
-    grid : numpy.ndarray
-        Epoch seconds, ascending, at which to sample the prices.
-
-    Returns
-    -------
-    stations : pandas.DataFrame
-        Stations still in the feed (columns id, name, lat, lon, cluster), in the row order of the matrix.
-    prices : numpy.ndarray
-        Array of shape (stations, grid) with NaN where a station had no known price (not yet seen, or no longer sold).
-    """
-    # --- Load the stations that are still in the latest run ----------------------------
-    stations = pd.read_sql_query(
-        "SELECT id, name, lat, lon, cluster FROM stations "
-        "WHERE last_seen = (SELECT MAX(fetched_at) FROM runs) ORDER BY id",
-        conn,
-    )
-    changes = pd.read_sql_query(
-        "SELECT station_id, price, observed_at FROM price_changes WHERE gas_type = ? ORDER BY station_id, observed_at",
-        conn,
-        params=(gas_type,),
-    )
-    changes["t"] = _epoch_seconds(changes["observed_at"])
-    by_station = {sid: g for sid, g in changes.groupby("station_id")}
-
-    # --- Sample each station's step function on the grid -------------------------------
-    prices = np.full((len(stations), len(grid)), np.nan)
-    for row, sid in enumerate(stations["id"]):
-        g = by_station.get(sid)
-        if g is None:
-            continue
-        # The price at T is the last change at or before T; earlier than the first change, the price is unknown.
-        idx = np.searchsorted(g["t"].to_numpy(), grid, side="right") - 1
-        values = g["price"].to_numpy(dtype=float)
-        prices[row] = np.where(idx >= 0, values[np.maximum(idx, 0)], np.nan)
-    return stations, prices
 
 
 def _series(block: np.ndarray) -> dict[str, list[float | None]]:
