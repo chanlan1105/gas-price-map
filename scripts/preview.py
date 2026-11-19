@@ -2,11 +2,15 @@
 
 Usage
 -----
-python -m scripts.preview [stations.geojson] [--gas Régulier] [--clusters 19] [--no-open]
+python -m scripts.preview [stations.geojson] [--history | --snapshot] [--gas Régulier] [--clusters 19] [--no-open]
 
 Run from the repository root. Each cluster is its own toggleable layer coloured distinctly; hover a
 station for details. Prints a per-cluster quality table to the console. The HTML is written to the
 system temporary directory, not `build/`, so it is never deployed.
+
+By default the clusters are fitted on the price history in the database, as `scripts.freeze_clusters` does, when it holds at least
+`MIN_FIT_HOURS` of it; ``--snapshot`` fits on the current feed's prices instead, to compare the two. A GeoJSON file always means a
+snapshot fit. The history fit also prints in-sample and out-of-sample scores.
 """
 import argparse
 import html
@@ -18,6 +22,8 @@ import folium
 import pandas as pd
 
 import scripts.clustering as C
+from scripts import history
+from scripts.freeze_clusters import FIT_DAYS, FIT_GAS_TYPE, MIN_FIT_HOURS
 from scripts.interactive_map import BaseMapRenderer, MapData
 
 # Distinct colours for adjacent clusters (the matplotlib "tab20" palette).
@@ -172,26 +178,53 @@ def main() -> Path:
         If the station feed cannot be fetched after the retry limit.
     """
     ap = argparse.ArgumentParser()
-    ap.add_argument("geojson", nargs="?", help="local GeoJSON path (defaults to the station feed)")
-    ap.add_argument("--gas", default="Régulier")
+    ap.add_argument("geojson", nargs="?", help="local GeoJSON path (defaults to the station feed); implies --snapshot")
+    mode = ap.add_mutually_exclusive_group()
+    mode.add_argument("--history", action="store_true", help=f"fit on the last {FIT_DAYS} days of stored history (the default when available)")
+    mode.add_argument("--snapshot", action="store_true", help="fit on the current prices only")
+    ap.add_argument("--gas", default=FIT_GAS_TYPE, help="fuel for a snapshot fit; a history fit always uses Régulier")
     ap.add_argument("--clusters", type=int, default=19, help="target number of clusters")
     ap.add_argument("--no-open", action="store_true", help="write the HTML without opening the browser")
     a = ap.parse_args()
 
-    # --- Load stations -----------------------------------------------------------------
-    if a.geojson is None:
-        map_data = MapData()
-        map_data.fetch_data()
-        stations = C.load_stations_data(map_data.data, a.gas)
-    else:
-        stations = C.load_stations(a.geojson, a.gas)
+    # --- Choose the fit: history when there is enough of it, unless a snapshot was requested --------
+    use_history = a.history or not (a.snapshot or a.geojson)
+    premium = None
+    if use_history:
+        conn = history.connect()
+        try:
+            available = history.span_hours(conn)
+            if available < MIN_FIT_HOURS and not a.history:
+                print(f"Only {available:.0f} h of history (need {MIN_FIT_HOURS} h): using the snapshot instead.")
+                use_history = False
+            elif available < MIN_FIT_HOURS:
+                raise SystemExit(f"Only {available:.0f} h of history; at least {MIN_FIT_HOURS} h are needed for --history.")
+            else:
+                if a.gas != FIT_GAS_TYPE:
+                    ap.error(f"--history only fits {FIT_GAS_TYPE}; use --snapshot for {a.gas}")
+                stations, premium = C.load_history_fit(conn, FIT_DAYS, FIT_GAS_TYPE)
+        finally:
+            conn.close()
+
+    # --- Load the stations for a snapshot fit ------------------------------------------
+    if not use_history:
+        if a.geojson is None:
+            map_data = MapData()
+            map_data.fetch_data()
+            stations = C.load_stations_data(map_data.data, a.gas)
+        else:
+            stations = C.load_stations(a.geojson, a.gas)
 
     # --- Cluster and report ------------------------------------------------------------
-    df, k, thr = C.fit_target(stations, a.gas, C.Params(), a.clusters)
+    params = C.Params()
+    df, k, thr = C.fit_target(stations, a.gas, params, a.clusters, premium)
     names = C.label_clusters(df)
-    rep = C.report(df, a.gas)
+    rep = C.report(df, a.gas, premium)
     rep["name"] = rep.index.map(names)
-    print(f"{k} clusters (Ward threshold {thr:.0f}), {(df.cluster < 0).sum()} of {len(df)} stations unclustered")
+    print(f"{'History' if use_history else 'Snapshot'} fit: {k} clusters (Ward threshold {thr:.0f}), "
+          f"{(df.cluster < 0).sum()} of {len(df)} stations unclustered")
+    if premium is not None:
+        print("\n".join(C.quality_lines(df, a.gas, params, a.clusters, premium)))
     print(rep.sort_values(["region", "median"]).to_string())
 
     # --- Render and open ---------------------------------------------------------------
