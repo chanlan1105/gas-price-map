@@ -16,13 +16,17 @@ import numpy as np
 import pandas as pd
 
 from scripts.history import hourly_prices
-from scripts.interactive_map import COLORS, build_colormap
+from scripts.interactive_map import COLORS, build_colormap, render_navbar
 
 STATS_GAS_TYPE: str = "Régulier"
 HISTORY_DAYS: int = 7  # The longest window on the page.
 UNCLUSTERED: int = -1  # Series id for stations that belong to no cluster.
+MAX_RUN_LAG_SECONDS: int = 1800  # How long after the latest recorded run the page still counts as having current prices.
 TEMPLATE_PATH: Path = Path(__file__).parent.parent / "assets" / "stats.html"
 DATA_PLACEHOLDER: str = "__STATS_DATA__"
+COLORBAR_PATH: Path = Path(__file__).parent.parent / "assets" / "colorbar.html"
+COLORBAR_PLACEHOLDER: str = "<!--COLORBAR-->"
+NAVBAR_PLACEHOLDER: str = "<!--NAVBAR-->"
 
 
 def _json_list(values: np.ndarray, digits: int = 2) -> list[float | None]:
@@ -42,6 +46,23 @@ def _json_list(values: np.ndarray, digits: int = 2) -> list[float | None]:
         Rounded values with None in place of NaN.
     """
     return [None if np.isnan(v) else round(float(v), digits) for v in values]
+
+
+def _text(value: object) -> str:
+    """
+    Converts a possibly missing text field (None or NaN) to a string, so the page data stays valid JSON.
+
+    Parameters
+    ----------
+    value : object
+        A value from the stations table.
+
+    Returns
+    -------
+    str
+        The text, or an empty string if missing.
+    """
+    return "" if pd.isna(value) else str(value)
 
 
 def _series(block: np.ndarray) -> dict[str, list[float | None]]:
@@ -73,7 +94,9 @@ def _series(block: np.ndarray) -> dict[str, list[float | None]]:
     }
 
 
-def build_stats(conn: sqlite3.Connection, gas_type: str = STATS_GAS_TYPE, days: int = HISTORY_DAYS) -> dict | None:
+def build_stats(
+    conn: sqlite3.Connection, gas_type: str = STATS_GAS_TYPE, days: int = HISTORY_DAYS, now: datetime | None = None
+) -> dict | None:
     """
     Builds the data embedded in the statistics page.
 
@@ -84,44 +107,51 @@ def build_stats(conn: sqlite3.Connection, gas_type: str = STATS_GAS_TYPE, days: 
     gas_type : str, default="Régulier"
         Fuel to report.
     days : int, default=7
-        Length of the history, ending at the latest recorded run.
+        Length of the history, ending at the render time.
+    now : datetime, optional
+        Render time (timezone-aware). Defaults to the current time.
 
     Returns
     -------
     dict or None
-        The page data, or None if no run has been recorded yet. Keys: ``gas_type``, ``times`` (hourly epoch seconds), ``clusters``
-        (id, name, island flag, station count and series, with id -1 for unclustered stations), ``stations`` (rows of lat, lon, price,
-        cluster, name and colour for the minimap) and ``colors`` (the colour scale breakpoints for the legend).
+        The page data, or None if no run has been recorded within the window. Keys: ``gas_type``, ``times`` (hourly epoch seconds,
+        the last being the render time; steps without recorded history hold None), ``clusters``
+        (id, name, island flag, station count and series), ``stations`` (rows of lat, lon, price, cluster, name, colour, brand and
+        address for the minimap; unclustered stations are omitted) and ``colors`` (the colour scale breakpoints for the legend).
     """
     latest = conn.execute("SELECT MAX(fetched_at) FROM runs").fetchone()[0]
     if latest is None:
         return None
 
-    # --- Sample the prices hourly, ending at the latest run ----------------------------
-    end = datetime.strptime(latest, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+    # --- Sample the prices hourly, ending now ------------------------------------------
+    # The axis always ends at the render time. Steps after the latest recorded run (beyond the normal lag between recording and
+    # rendering) have no data, so the lines stop early instead of repeating the last known price.
+    end = (now or datetime.now(timezone.utc)).replace(microsecond=0)
+    latest_ts = datetime.strptime(latest, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc).timestamp()
     grid = np.array([(end - timedelta(hours=h)).timestamp() for h in range(days * 24, -1, -1)])
     stations, prices = hourly_prices(conn, gas_type, grid)
+    covered = grid <= latest_ts + MAX_RUN_LAG_SECONDS
+    if not covered.any():
+        return None
+    prices[:, ~covered] = np.nan
     ids = stations["cluster"].fillna(UNCLUSTERED).astype(int).to_numpy()
 
-    # --- Summarize each frozen cluster, then the stations outside every cluster --------
+    # --- Summarize each frozen cluster; stations outside every cluster are left out ----
     info = conn.execute("SELECT id, name, is_island FROM clusters ORDER BY is_island DESC, name").fetchall()
     clusters = [
         {"id": cid, "name": name, "island": bool(island), "stations": int((ids == cid).sum()), "series": _series(prices[ids == cid])}
         for cid, name, island in info
     ]
-    if (ids < 0).any():
-        clusters.append(
-            {"id": UNCLUSTERED, "name": "Other stations", "island": False, "stations": int((ids < 0).sum()),
-             "series": _series(prices[ids < 0])}
-        )
 
     # --- Colour the current stations with the main map's scale -------------------------
-    current = pd.Series(prices[:, -1])
+    current = pd.Series(prices[:, np.flatnonzero(covered)[-1]])
     colormap = build_colormap(current)
     rows = [
-        [round(lat, 5), round(lon, 5), round(float(p), 1), int(cid), name, colormap(p)[:7]]
-        for lat, lon, p, cid, name in zip(stations["lat"], stations["lon"], current, ids, stations["name"])
-        if not np.isnan(p)
+        [round(lat, 5), round(lon, 5), round(float(p), 1), int(cid), name, colormap(p)[:7], _text(brand), _text(address)]
+        for lat, lon, p, cid, name, brand, address in zip(
+            stations["lat"], stations["lon"], current, ids, stations["name"], stations["brand"], stations["address"]
+        )
+        if not np.isnan(p) and cid != UNCLUSTERED
     ]
     return {
         "gas_type": gas_type,
@@ -149,8 +179,14 @@ def render_stats_page(data: dict, output_dir: Path = Path("build")) -> Path:
         Path of the written page.
     """
     # "</" is escaped so a station name can never close the script tag that holds the data.
-    payload = json.dumps(data, ensure_ascii=False, separators=(",", ":")).replace("</", "<\\/")
-    page = TEMPLATE_PATH.read_text(encoding="utf-8").replace(DATA_PLACEHOLDER, payload)
+    payload = json.dumps(data, ensure_ascii=False, separators=(",", ":"), allow_nan=False).replace("</", "<\\/")
+    colorbar = COLORBAR_PATH.read_text(encoding="utf-8")
+    page = (
+        TEMPLATE_PATH.read_text(encoding="utf-8")
+        .replace(COLORBAR_PLACEHOLDER, colorbar)
+        .replace(NAVBAR_PLACEHOLDER, render_navbar("stats"))
+        .replace(DATA_PLACEHOLDER, payload)
+    )
     output_dir.mkdir(parents=True, exist_ok=True)
     output_path = output_dir / "stats.html"
     output_path.write_text(page, encoding="utf-8")

@@ -85,8 +85,10 @@ This project uses [uv](https://github.com/astral-sh/uv), a fast Python package i
 2. **Sync and install dependencies:**
    This command automatically creates a virtual environment (`.venv`) and installs the exact versions of all packages specified in `uv.lock`:
    ```bash
-   uv sync
+   uv sync [--no-dev]
    ```
+
+   In production environments, use the `--no-dev` flag to avoid adding heavy dev dependencies.
 
 3. **Generate the interactive maps:**
    Execute the build script inside the synchronized virtual environment:
@@ -150,6 +152,14 @@ All packages and version constraints are defined in `pyproject.toml`.
 
 To add, remove, or update dependencies, use the `uv add` or `uv remove` commands, which will automatically keep `pyproject.toml` and `uv.lock` aligned.
 
+### Dev Dependencies
+
+`playwright` is installed as a dev dependency to allow agents to verify the UI. Upon setup, download the Playwright browsers:
+
+```
+uv run playwright install
+```
+
 ## Raspberry Pi Setup
 
 These steps prepare a fresh Raspberry Pi (Raspberry Pi OS / Debian) to build, record and publish the site.
@@ -194,7 +204,7 @@ These steps prepare a fresh Raspberry Pi (Raspberry Pi OS / Debian) to build, re
    cd ~/essence
    git config user.name "essence-pi"
    git config user.email "essence-pi@localhost"   # the deploy script makes commits
-   uv sync
+   uv sync --no-dev
    chmod +x assets/deploy-page
    mkdir -p logs
    ```

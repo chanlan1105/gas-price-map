@@ -45,3 +45,8 @@ pillow = { index = "piwheels", marker = "platform_machine == 'armv7l' or platfor
 scikit-learn = { index = "piwheels", marker = "platform_machine == 'armv7l' or platform_machine == 'armv6l'" }
 scipy = { index = "piwheels", marker = "platform_machine == 'armv7l' or platform_machine == 'armv6l'" }
 shapely = { index = "piwheels", marker = "platform_machine == 'armv7l' or platform_machine == 'armv6l'" }
+
+[dependency-groups]
+dev = [
+    "playwright>=1.65.2",
+]

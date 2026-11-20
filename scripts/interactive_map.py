@@ -8,6 +8,10 @@ from zoneinfo import ZoneInfo
 import time
 from pathlib import Path
 import shutil
+import json
+import re
+
+NAVBAR_PATH: Path = Path(__file__).parent.parent / "assets" / "navbar.html"
 
 # Single source of truth for which stations are shown on the map and clustered (see MapData.filter_regions).
 REGIONS: dict[str, dict | None] = {
@@ -390,6 +394,25 @@ def build_colormap(prices: pd.Series) -> cm.LinearColormap:
     return cm.LinearColormap(colors=COLORS, index=quantiles_vals, vmin=vmin, vmax=vmax)
 
 
+def render_navbar(active: str) -> str:
+    """
+    Builds the navigation pill shared by the map pages and the statistics page.
+
+    Parameters
+    ----------
+    active : str
+        Page to highlight: ``"index"`` (Régulier), ``"super"``, ``"diesel"`` or ``"stats"``.
+
+    Returns
+    -------
+    str
+        The pill's HTML, including its stylesheet.
+    """
+    html = NAVBAR_PATH.read_text(encoding="utf-8")
+    # Each link carries a marker that becomes "active" for the current page and is removed for the others.
+    return re.sub(r"<!--ACTIVE:(\w+)-->", lambda m: "active" if m.group(1) == active else "", html)
+
+
 class MapRenderer(BaseMapRenderer):
     """
     A class to render the gas price map.
@@ -411,6 +434,27 @@ class MapRenderer(BaseMapRenderer):
         self.stations["color"] = self.stations[self.gas_type].apply(
             lambda p: self.colormap(p)[:7] if not pd.isna(p) else "#888888"
         )
+
+    def _add_colorbar(self):
+        """
+        Adds the price colourbar, shared with the statistics page, to the top right corner of the map.
+
+        The map's own top right controls (layer control) are pushed down so they sit beneath the bar.
+        """
+        colorbar_path = Path(__file__).parent.parent / "assets" / "colorbar.html"
+        colorbar_html = colorbar_path.read_text(encoding="utf-8")
+        index = [round(float(v), 1) for v in self.colormap.index]
+        script = f"""
+        <style>.leaflet-top.leaflet-right {{ margin-top: 72px; }}</style>
+        <script>
+            // The map div is written after this script, so wait for the page to parse.
+            document.addEventListener("DOMContentLoaded", function () {{
+                buildColorbar(document.getElementById({json.dumps(self.inter_map.get_name())}),
+                              {json.dumps(self.gas_type)}, {json.dumps(index)}, {json.dumps(COLORS)});
+            }});
+        </script>
+        """
+        self.inter_map.get_root().html.add_child(folium.Element(colorbar_html + script))
 
     def _add_verbose_marker_js(self):
         """
@@ -446,143 +490,66 @@ class MapRenderer(BaseMapRenderer):
         Inject a unified fixed footer for seamless navigation between the three map views.
         Uses window.location.hash to persist map pan/zoom coordinates across page loads.
         """
-        footer_html = f"""
-        <style>
-            .map-footer {{
-                position: fixed;
-                bottom: 20px;
-                left: 50%;
-                transform: translateX(-50%);
-                width: auto;
-                height: 70px;
-                background-color: #ffffff;
-                border-top: 1px solid #e0e0e0;
-                display: flex;
-                justify-content: center;
-                align-items: center;
-                gap: 40px;
-                z-index: 9999;
-                box-shadow: 0 -2px 10px rgba(0,0,0,0.08);
-                border-radius: 35px;
-                padding: 0 30px;
-            }}
-            .map-footer a {{
-                display: flex;
-                flex-direction: column;
-                align-items: center;
-                text-decoration: none;
-                color: #757575;
-                font-family: sans-serif;
-                font-size: 13px;
-                font-weight: 500;
-                transition: color 0.2s, transform 0.2s;
-            }}
-            .map-footer a:hover {{
-                color: #333333;
-                transform: scale(1.05);
-            }}
-            .map-footer a.active {{
-                color: #007aff;
-                pointer-events: none;
-            }}
-            .map-footer svg {{
-                width: 28px;
-                height: 28px;
-                margin-bottom: 4px;
-                fill: currentColor;
-            }}
-            @media (max-width: 768px) {{
-                .map-footer {{
-                    bottom: 0;
-                    width: 100%;
-                    border-radius: 0;
-                    padding: 0;
-                    gap: 24px;
-                }}
-            }}
-        </style>
-        <div class="map-footer">
-            <a href="index.html" class="{'active' if self.gas_type == 'Régulier' else ''}" onclick="saveMapState(event, this.href)">
-                <svg viewBox="0 0 24 24">
-                    <rect x="2" y="4" width="20" height="16" rx="4" fill="none" stroke="currentColor" stroke-width="2"/>
-                    <text x="12" y="16" text-anchor="middle" font-size="12" font-weight="bold" font-family="sans-serif" stroke="none">87</text>
-                </svg>
-                Régulier
-            </a>
-            <a href="super.html" class="{'active' if self.gas_type == 'Super' else ''}" onclick="saveMapState(event, this.href)">
-                <svg viewBox="0 0 24 24">
-                    <rect x="2" y="4" width="20" height="16" rx="4" fill="none" stroke="currentColor" stroke-width="2"/>
-                    <text x="12" y="16" text-anchor="middle" font-size="12" font-weight="bold" font-family="sans-serif" stroke="none">91</text>
-                </svg>
-                Super
-            </a>
-            <a href="diesel.html" class="{'active' if self.gas_type == 'Diesel' else ''}" onclick="saveMapState(event, this.href)">
-                <svg viewBox="0 0 24 24">
-                    <path d="M20 8h-3V4H3c-1.1 0-2 .9-2 2v11h2c0 1.66 1.34 3 3 3s3-1.34 3-3h6c0 1.66 1.34 3 3 3s3-1.34 3-3h2v-5l-3-4zM6 18.5c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zm13.5-9l1.96 2.5H17V9.5h2.5zm-1.5 9c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5z"/>
-                </svg>
-                Diesel
-            </a>
-            <a href="stats.html">
-                <svg viewBox="0 0 24 24">
-                    <path d="M4 20V10h4v10H4zm6 0V4h4v16h-4zm6 0v-7h4v7h-4z"/>
-                </svg>
-                Stats
-            </a>
-        </div>
+        active = {"Régulier": "index", "Super": "super", "Diesel": "diesel"}[self.gas_type]
+        footer_html = render_navbar(active) + """
         <script>
             // Intercept Leaflet's map initialization to seamlessly inject the URL hash view
-            if (window.L && window.L.map) {{
+            if (window.L && window.L.map) {
                 var originalLMap = window.L.map;
-                window.L.map = function(id, options) {{
+                window.L.map = function(id, options) {
                     var hasHash = false;
-                    if (window.location.hash) {{
+                    if (window.location.hash) {
                         var parts = window.location.hash.substring(1).split(',');
-                        if (parts.length === 3) {{
+                        if (parts.length === 3) {
                             var lat = parseFloat(parts[0]);
                             var lng = parseFloat(parts[1]);
                             var zoom = parseInt(parts[2], 10);
-                            if (!isNaN(lat) && !isNaN(lng) && !isNaN(zoom)) {{
+                            if (!isNaN(lat) && !isNaN(lng) && !isNaN(zoom)) {
                                 options.center = [lat, lng];
                                 options.zoom = zoom;
                                 hasHash = true;
-                            }}
-                        }}
-                    }}
+                            }
+                        }
+                    }
                     var mapInstance = originalLMap(id, options);
                     
-                    if (hasHash) {{
+                    if (hasHash) {
                         // Suppress the initial fitBounds call from Folium
                         var originalFitBounds = mapInstance.fitBounds;
-                        mapInstance.fitBounds = function() {{
+                        mapInstance.fitBounds = function() {
                             mapInstance.fitBounds = originalFitBounds; // Restore it
                             return mapInstance;
-                        }};
-                        setTimeout(function() {{ history.replaceState(null, null, ' '); }}, 500);
-                    }}
+                        };
+                        setTimeout(function() { history.replaceState(null, null, ' '); }, 500);
+                    }
                     return mapInstance;
-                }};
-            }}
+                };
+            }
 
-            function getMapInstance() {{
-                for (var key in window) {{
-                    if (window[key] && window[key]._leaflet_id && typeof window[key].getZoom === 'function') {{
+            function getMapInstance() {
+                for (var key in window) {
+                    if (window[key] && window[key]._leaflet_id && typeof window[key].getZoom === 'function') {
                         return window[key];
-                    }}
-                }}
+                    }
+                }
                 return null;
-            }}
-            function saveMapState(e, href) {{
+            }
+            function saveMapState(e, href) {
                 e.preventDefault();
                 var map = getMapInstance();
-                if (map) {{
+                if (map) {
                     var center = map.getCenter();
                     var zoom = map.getZoom();
                     var hash = '#' + center.lat.toFixed(5) + ',' + center.lng.toFixed(5) + ',' + zoom;
                     window.location.href = href + hash;
-                }} else {{
+                } else {
                     window.location.href = href;
-                }}
-            }}
+                }
+            }
+            // The Stats link is left out: the statistics minimap has its own view, so no hash is passed to it.
+            document.querySelectorAll('.map-footer a:not([href="stats.html"])').forEach(function (a) {
+                a.addEventListener('click', function (e) { saveMapState(e, a.href); });
+            });
         </script>
         """
         self.inter_map.get_root().html.add_child(folium.Element(footer_html))
@@ -608,6 +575,7 @@ class MapRenderer(BaseMapRenderer):
             marker_kwds=dict(radius=5, fill=True),
             marker_type="circle_marker",
             name="Gas Stations",  # name of the layer in the map
+            legend=False,  # The shared colourbar (assets/colorbar.html) replaces the default legend.
             tooltip=[
                 "Name",
                 "brand",
@@ -621,6 +589,7 @@ class MapRenderer(BaseMapRenderer):
 
         self._add_tile_layer()
         self._add_info()
+        self._add_colorbar()
         self._update_popover_styles()
         self._add_verbose_marker_js()
         self._add_geolocation_js()
