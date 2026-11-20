@@ -20,7 +20,7 @@ git pull
 # Run python script to update HTML
 echo -e "${CYAN}[PRODUCTION] Building new map...${RESET}"
 rm -rf build/*
-"$HOME/.local/bin/uv" run --project "$(pwd)" main.py
+"$HOME/.local/bin/uv" run --project "$(pwd)" main.py --no-history
 
 # Deploy build folder
 echo -e "${CYAN}[PRODUCTION] Deploying build folder...${RESET}"
@@ -44,7 +44,7 @@ git pull
 # Run python script on development branch
 echo -e "${CYAN}[PREVIEW] Building new map...${RESET}"
 rm -rf build/*
-"$HOME/.local/bin/uv" run --project "$(pwd)" main.py --no-history
+"$HOME/.local/bin/uv" run --project "$(pwd)" main.py
 
 # Deploy build folder into preview branch
 echo -e "${CYAN}[PREVIEW] Deploying build folder...${RESET}"
