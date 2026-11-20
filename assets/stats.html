@@ -6,6 +6,7 @@
 <title>Québec Gas Price Statistics</title>
 <link rel="shortcut icon" href="favicon.png" type="image/png">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<!--COLORBAR-->
 <style>
     * { box-sizing: border-box; }
     html, body { height: 100%; margin: 0; font-family: sans-serif; color: #222; background: #f5f5f5; }
@@ -23,13 +24,11 @@
         flex: 1; min-width: 0; height: 44px; padding: 0 12px; font-size: 16px;
         border: 1px solid #ccc; border-radius: 10px; background: #fff;
     }
-    .back {
-        flex: none; height: 44px; padding: 0 14px; display: flex; align-items: center;
-        background: #fff; border: 1px solid #ccc; border-radius: 10px; color: #007aff; text-decoration: none; font-weight: 500;
-    }
-    .panel { grid-area: panel; overflow-y: auto; padding: 8px 20px 24px; }
+    /* The bottom padding lets the content scroll clear of the floating navigation pill. */
+    .panel { grid-area: panel; overflow-y: auto; padding: 8px 20px 110px; }
     .handle { display: none; }
-    #map { grid-area: map; height: 100%; min-height: 0; background: #e8e8e8; }
+    /* isolation keeps the Leaflet controls, attribution and colourbar (z-index 1000) beneath the panel and selector. */
+    #map { grid-area: map; height: 100%; min-height: 0; background: #e8e8e8; isolation: isolate; }
 
     h1 { font-size: 18px; margin: 8px 0 12px; }
     .tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 14px; }
@@ -49,32 +48,50 @@
     .note { font-size: 12px; color: #777; }
     .empty { padding: 24px; text-align: center; color: #666; }
 
-    .legend {
-        position: absolute; left: 12px; bottom: 12px; z-index: 500; background: rgba(255,255,255,.9); border-radius: 8px;
-        padding: 6px 10px; font-size: 12px; box-shadow: 0 1px 4px rgba(0,0,0,.2);
+    /* Same tooltip and user marker styles as the main map. */
+    .leaflet-tooltip, .leaflet-tooltip *, .foliumtooltip, .foliumtooltip * { font-size: 11px !important; }
+    .user-location-marker { background: none !important; border: none !important; }
+    .blue-dot {
+        width: 14px; height: 14px; background-color: #007aff; border: 2.5px solid #fff; border-radius: 50%;
+        box-shadow: 0 0 5px rgba(0, 0, 0, 0.4); position: absolute; top: 50%; left: 50%;
+        transform: translate(-50%, -50%); z-index: 1000;
     }
-    .legend .bar { height: 10px; width: 160px; border-radius: 5px; margin: 4px 0 2px; }
-    .legend .ends { display: flex; justify-content: space-between; }
+    .blue-dot-pulse {
+        width: 32px; height: 32px; background-color: rgba(0, 122, 255, 0.25); border-radius: 50%; position: absolute;
+        top: 50%; left: 50%; transform: translate(-50%, -50%); animation: pulse 1.8s infinite ease-out;
+        z-index: 999; pointer-events: none;
+    }
+    @keyframes pulse {
+        0% { transform: translate(-50%, -50%) scale(0.5); opacity: 1; }
+        100% { transform: translate(-50%, -50%) scale(2.2); opacity: 0; }
+    }
 
     /* Mobile: full-screen minimap, floating selector, bottom sheet. */
     @media (max-width: 768px) {
         #app { display: block; position: relative; height: 100dvh; overflow: hidden; }
         #map { position: absolute; inset: 0; }
+        /* Lifts the attribution above the collapsed sheet; it is hidden while the sheet is open. */
+        .leaflet-bottom.leaflet-right { bottom: calc(64px + 70px); }
+        #app.sheet-open .leaflet-control-attribution { display: none; }
+        /* The zoom buttons and the colourbar sit on the line below the selector row. */
+        .leaflet-top.leaflet-left { margin-top: calc(max(12px, env(safe-area-inset-top)) + 44px + 8px); }
+        .cbar { top: calc(max(12px, env(safe-area-inset-top)) + 44px + 8px); }
         .selector {
             position: absolute; top: 0; left: 0; right: 0; z-index: 800; padding: 12px;
             padding-top: max(12px, env(safe-area-inset-top));
         }
-        .selector select, .back { box-shadow: 0 2px 8px rgba(0,0,0,.25); border-color: transparent; }
+        .selector select { box-shadow: 0 2px 8px rgba(0,0,0,.25); border-color: transparent; }
         .panel {
-            position: absolute; left: 0; right: 0; bottom: 0; z-index: 700;
-            /* Leaves the floating selector (about 68px) uncovered when the sheet is open. */
-            height: calc(100% - 72px);
+            /* The sheet sits on top of the 70px navigation bar and leaves the floating selector (about 68px) uncovered. */
+            position: absolute; left: 0; right: 0; bottom: 70px; z-index: 700;
+            height: calc(100% - 72px - 70px);
             padding: 0 16px 24px; background: #f5f5f5; border-radius: 16px 16px 0 0;
             box-shadow: 0 -2px 12px rgba(0,0,0,.25);
-            transform: translateY(calc(100% - 64px - env(safe-area-inset-bottom)));
+            transform: translateY(calc(100% - 64px));
             transition: transform .25s ease-out;
+            overflow: hidden; overscroll-behavior: contain;
         }
-        .panel.open { transform: translateY(0); }
+        .panel.open { transform: translateY(0); overflow-y: auto; }
         .handle {
             display: flex; align-items: center; justify-content: space-between; width: 100%; height: 64px; padding: 0;
             border: none; background: none; font-size: 15px; font-weight: 600; text-align: left; color: inherit; cursor: pointer;
@@ -84,10 +101,9 @@
             content: ""; position: absolute; top: 8px; left: 50%; width: 40px; height: 4px; margin-left: -20px;
             border-radius: 2px; background: #bbb;
         }
-        .handle .chev { transition: transform .25s; }
+        .handle .chev { flex: none; transition: transform .25s; }
         .panel.open .handle .chev { transform: rotate(180deg); }
         h1 { display: none; }
-        .legend { bottom: 76px; }
         .tiles { grid-template-columns: repeat(2, 1fr); }
     }
 </style>
@@ -95,13 +111,12 @@
 <body>
 <div id="app">
     <div class="selector">
-        <a class="back" href="index.html" aria-label="Back to the map">&larr; Map</a>
         <select id="region" aria-label="Region"></select>
     </div>
 
     <div class="panel" id="panel">
         <button class="handle" id="handle" type="button" aria-expanded="false" aria-controls="panel-body">
-            <span id="peek">Statistics</span><span class="chev">&#9650;</span>
+            <span id="peek">Statistics</span><svg class="chev" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 15l6-6 6 6"/></svg>
         </button>
         <div id="panel-body">
             <h1 id="title"></h1>
@@ -124,6 +139,7 @@
 
     <div id="map"></div>
 </div>
+<!--NAVBAR-->
 
 <script id="stats-data" type="application/json">__STATS_DATA__</script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -200,9 +216,75 @@
      * @returns {string} The formatted time.
      */
     function formatTime(seconds, withDate) {
-        var options = { timeZone: TIME_ZONE, hour: '2-digit', minute: '2-digit', hour12: false };
+        var options = { timeZone: TIME_ZONE, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' };
         if (withDate) { options.month = 'short'; options.day = 'numeric'; }
         return new Intl.DateTimeFormat('en-CA', options).format(new Date(seconds * 1000));
+    }
+
+    /**
+     * Formats an epoch time as "YYYY-MM-DD HH:MM" in Montréal time, like the "Updated" stamp on the main map.
+     *
+     * @param {number} seconds - Seconds since the Unix epoch.
+     * @returns {string} The formatted date and time.
+     */
+    function formatStamp(seconds) {
+        var p = {};
+        new Intl.DateTimeFormat('en-CA', {
+            timeZone: TIME_ZONE, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit'
+        }).formatToParts(new Date(seconds * 1000)).forEach(function (x) { p[x.type] = x.value; });
+        return p.year + '-' + p.month + '-' + p.day + ' ' + p.hour + ':' + p.minute;
+    }
+
+    var TICK_HOURS = { 24: 3, 72: 12, 168: 24 };
+    var PARTS = new Intl.DateTimeFormat('en-CA', {
+        timeZone: TIME_ZONE, hourCycle: 'h23', year: 'numeric', month: 'numeric', day: 'numeric',
+        hour: 'numeric', minute: 'numeric', second: 'numeric'
+    });
+
+    /**
+     * Gives Montréal's offset from UTC at a moment.
+     *
+     * @param {number} seconds - Seconds since the Unix epoch.
+     * @returns {number} Seconds to add to UTC to get Montréal wall-clock time (negative here).
+     */
+    function zoneOffset(seconds) {
+        var p = {};
+        PARTS.formatToParts(new Date(seconds * 1000)).forEach(function (x) { p[x.type] = parseInt(x.value, 10); });
+        return Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second) / 1000 - Math.floor(seconds);
+    }
+
+    /**
+     * Lists the moments in a range that fall on multiples of a step in Montréal wall-clock time.
+     *
+     * @param {number} min - Start of the range, in epoch seconds.
+     * @param {number} max - End of the range, in epoch seconds.
+     * @param {number} step - Spacing in seconds; a divisor of a day so ticks include local midnight.
+     * @returns {number[]} Epoch seconds of each tick.
+     */
+    function roundTimes(min, max, step) {
+        var out = [];
+        var local = Math.ceil((min + zoneOffset(min)) / step) * step;
+        for (; ; local += step) {
+            var t = local - zoneOffset(local - zoneOffset(local));
+            if (t > max) { break; }
+            if (t >= min) { out.push(t); }
+        }
+        return out;
+    }
+
+    /**
+     * Labels a gridline: the time of day, or the date at midnight (and for daily ticks).
+     *
+     * @param {number} seconds - Epoch seconds of the tick.
+     * @returns {string} The label.
+     */
+    function formatTick(seconds) {
+        if (state.hours <= 24) { return formatTime(seconds, false); }
+        var time = formatTime(seconds, false);
+        if (state.hours > 72 || time === '00:00') {
+            return new Intl.DateTimeFormat('en-CA', { timeZone: TIME_ZONE, month: 'short', day: 'numeric' }).format(new Date(seconds * 1000));
+        }
+        return time;
     }
 
     // --- Region selector -------------------------------------------------------------------
@@ -233,49 +315,104 @@
     }
 
     // --- Minimap ---------------------------------------------------------------------------
-    var map = L.map('map', { zoomControl: !MOBILE_QUERY.matches, preferCanvas: true }).setView([45.55, -73.6], 10);
+    var map = L.map('map', { preferCanvas: true }).setView([45.55, -73.6], 10);
     L.tileLayer(TILE_URL, { attribution: TILE_ATTR, maxZoom: 19 }).addTo(map);
+
+    /**
+     * Escapes text for safe use in tooltip markup.
+     *
+     * @param {string} text - Raw text.
+     * @returns {string} Text with HTML special characters escaped.
+     */
+    function esc(text) {
+        return String(text).replace(/[&<>"']/g, function (c) {
+            return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+        });
+    }
+
+    /**
+     * Builds the tooltip table in the main map's format (the fields available on this page).
+     *
+     * @param {Array} s - A row of `DATA.stations`.
+     * @returns {string} Table markup.
+     */
+    function tooltipHtml(s) {
+        var rows = [['Name', s[4]], ['brand', s[6]], ['Address', s[7]], [DATA.gas_type, s[2]]];
+        return '<table>' + rows.map(function (r) {
+            return '<tr><th>' + esc(r[0]) + '</th><td>' + esc(r[1]) + '</td></tr>';
+        }).join('') + '</table>';
+    }
+
     var markers = DATA.stations.map(function (s) {
-        return L.circleMarker([s[0], s[1]], { radius: 5, weight: 1, color: '#fff', fillOpacity: 0.9 })
-            .bindTooltip(s[4] + ' – ' + s[2].toFixed(1) + '¢').addTo(map);
+        return L.circleMarker([s[0], s[1]], { radius: 5, weight: 2, color: s[5], fillColor: s[5], fillOpacity: 0.5 })
+            .bindTooltip(tooltipHtml(s), { sticky: true, className: 'foliumtooltip' }).addTo(map);
     });
 
     /**
-     * Colours the selected region's stations with the price scale and grays out the others, then recentres the map.
+     * Colours the selected region's stations with the price scale and grays out the others.
+     *
+     * @param {boolean} recenter - Also fit the map to the selected region (only when the region changes).
      */
-    function updateMap() {
+    function updateMap(recenter) {
         var bounds = [];
         DATA.stations.forEach(function (s, i) {
             var selected = state.region === ALL || s[3] === state.region;
             markers[i].setStyle(selected
-                ? { fillColor: s[5], fillOpacity: 0.9, opacity: 1 }
-                : { fillColor: GRAY, fillOpacity: 0.6, opacity: 0.6 });
+                ? { color: s[5], fillColor: s[5], fillOpacity: 0.5, opacity: 1 }
+                : { color: GRAY, fillColor: GRAY, fillOpacity: 0.3, opacity: 0.6 });
             if (selected) { bounds.push([s[0], s[1]]); }
         });
         // Raised after styling so the coloured stations are never hidden behind gray ones.
         DATA.stations.forEach(function (s, i) {
             if (state.region === ALL || s[3] === state.region) { markers[i].bringToFront(); }
         });
-        if (bounds.length) {
-            var bottom = MOBILE_QUERY.matches ? 90 : 20;
-            map.fitBounds(bounds, { paddingTopLeft: [20, MOBILE_QUERY.matches ? 80 : 20], paddingBottomRight: [20, bottom], maxZoom: 14 });
+        if (recenter && bounds.length) {
+            // On mobile the top is covered by the selector and colourbar, and the bottom by the collapsed sheet.
+            var mobile = MOBILE_QUERY.matches;
+            map.fitBounds(bounds, { paddingTopLeft: [20, mobile ? 120 : 20], paddingBottomRight: [20, mobile ? 90 : 20], maxZoom: 14 });
         }
     }
 
+    // --- User location ---------------------------------------------------------------------
+    var NEAREST_LIMIT_KM = 15;
+
     /**
-     * Adds the colour scale legend to the minimap.
+     * Finds the region of the station nearest to a point.
+     *
+     * @param {number} lat - Latitude in degrees.
+     * @param {number} lon - Longitude in degrees.
+     * @returns {?number} The cluster id, or null if no station is within `NEAREST_LIMIT_KM`.
      */
-    function buildLegend() {
-        var scale = DATA.colors;
-        var lo = scale.index[0], hi = scale.index[scale.index.length - 1];
-        var stops = scale.colors.map(function (c, i) {
-            return c + ' ' + ((scale.index[i] - lo) / (hi - lo) * 100).toFixed(1) + '%';
+    function regionNear(lat, lon) {
+        var best = null, bestKm = NEAREST_LIMIT_KM;
+        var kmPerLon = 111.32 * Math.cos(lat * Math.PI / 180);
+        DATA.stations.forEach(function (s) {
+            var dy = (s[0] - lat) * 110.57, dx = (s[1] - lon) * kmPerLon;
+            var km = Math.sqrt(dx * dx + dy * dy);
+            if (km < bestKm) { bestKm = km; best = s[3]; }
         });
-        var el = document.createElement('div');
-        el.className = 'legend';
-        el.innerHTML = DATA.gas_type + ' (¢/L)<div class="bar" style="background:linear-gradient(to right,' + stops.join(',') +
-            ')"></div><div class="ends"><span>' + lo.toFixed(1) + '</span><span>' + hi.toFixed(1) + '</span></div>';
-        document.getElementById('map').appendChild(el);
+        return best;
+    }
+
+    /**
+     * Shows the user's location with the main map's marker and opens the page on their region.
+     */
+    function locateUser() {
+        if (!navigator.geolocation) { return; }
+        navigator.geolocation.getCurrentPosition(function (pos) {
+            var lat = pos.coords.latitude, lon = pos.coords.longitude;
+            var icon = L.divIcon({
+                html: '<div class="blue-dot"></div><div class="blue-dot-pulse"></div>',
+                className: 'user-location-marker', iconSize: [32, 32], iconAnchor: [16, 16]
+            });
+            L.marker([lat, lon], { icon: icon, zIndexOffset: 1000, interactive: false }).addTo(map);
+            var region = regionNear(lat, lon);
+            if (region !== null && clustersById[region]) {
+                state.region = region;
+                select.value = String(region);
+                update(true);
+            }
+        }, function () { /* Stay on "All regions". */ }, { enableHighAccuracy: false, timeout: 7000, maximumAge: 60000 });
     }
 
     // --- Chart -----------------------------------------------------------------------------
@@ -306,10 +443,14 @@
             scales: {
                 x: {
                     type: 'linear',
+                    // Gridlines fall on round Montréal times (every 3 h, 12 h or 24 h depending on the window).
+                    afterBuildTicks: function (scale) {
+                        var step = TICK_HOURS[state.hours] || 3;
+                        scale.ticks = roundTimes(scale.min, scale.max, step * 3600).map(function (t) { return { value: t }; });
+                    },
                     ticks: {
-                        maxTicksLimit: 6,
                         maxRotation: 0,
-                        callback: function (value) { return formatTime(value, state.hours > 24); }
+                        callback: function (value) { return formatTick(value); }
                     }
                 },
                 y: { ticks: { callback: function (value) { return value.toFixed(0); } }, title: { display: true, text: '¢/L' } }
@@ -355,11 +496,15 @@
 
     /**
      * Refreshes the tiles, comparisons, chart and minimap for the current selection.
+     *
+     * @param {boolean} recenter - Fit the minimap to the region; true only when the region itself changed.
      */
-    function update() {
-        var last = DATA.times.length - 1;
+    function update(recenter) {
         var region = state.region === ALL ? null : clustersById[state.region];
         var series = combine(clustersFor(state.region));
+        // The axis ends at the render time, but the figures come from the latest step that has prices.
+        var last = series.n.length - 1;
+        while (last > 0 && !series.n[last]) { last--; }
         var name = region ? region.name : 'All regions';
 
         document.getElementById('title').textContent = DATA.gas_type + ' – ' + name;
@@ -382,16 +527,16 @@
         }
         document.getElementById('compare').innerHTML = html;
         document.getElementById('note').textContent =
-            'Latest prices as of ' + formatTime(DATA.times[last], true) + ' (Montréal time). Differences compare average prices.';
+            'Last updated ' + formatStamp(DATA.times[DATA.times.length - 1]) + ' (Montréal time). Differences compare average prices.';
 
         updateChart(series);
-        updateMap();
+        updateMap(recenter);
     }
 
     // --- Events ----------------------------------------------------------------------------
     select.addEventListener('change', function () {
         state.region = select.value === ALL ? ALL : parseInt(select.value, 10);
-        update();
+        update(true);
     });
 
     document.getElementById('toggle').addEventListener('click', function (event) {
@@ -406,6 +551,7 @@
     var handle = document.getElementById('handle');
     handle.addEventListener('click', function () {
         var open = panel.classList.toggle('open');
+        document.getElementById('app').classList.toggle('sheet-open', open);
         handle.setAttribute('aria-expanded', open);
         // The chart is measured while the sheet slides, so resize it once the transition ends.
         setTimeout(function () { chart.resize(); }, 300);
@@ -414,8 +560,9 @@
     window.addEventListener('resize', function () { map.invalidateSize(); });
 
     buildSelector();
-    buildLegend();
-    update();
+    buildColorbar(document.getElementById('map'), DATA.gas_type, DATA.colors.index, DATA.colors.colors);
+    update(true);
+    locateUser();
 }());
 </script>
 </body>

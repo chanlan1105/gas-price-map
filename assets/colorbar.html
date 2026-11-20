@@ -1,0 +1,38 @@
+<style>
+    .cbar {
+        position: absolute; top: 12px; right: 12px; z-index: 1000; pointer-events: none;
+        background: rgba(255,255,255,.9); border-radius: 8px; padding: 6px 10px; font: 12px sans-serif; color: #222;
+        box-shadow: 0 1px 4px rgba(0,0,0,.2);
+    }
+    .cbar .cbar-track { position: relative; width: 240px; margin: 4px 14px 0; }
+    .cbar .cbar-bar { height: 10px; border-radius: 5px; }
+    .cbar .cbar-labels { position: relative; height: 16px; margin-top: 2px; }
+    .cbar .cbar-labels span { position: absolute; transform: translateX(-50%); white-space: nowrap; }
+    @media (max-width: 768px) {
+        .cbar .cbar-track { width: 180px; }
+    }
+</style>
+<script>
+/**
+ * Adds the price colour scale to a container: a gradient bar with the five quartile breakpoints evenly spaced beneath it.
+ *
+ * @param {HTMLElement} container - Positioned element (such as a map div) the bar is placed in, top right.
+ * @param {string} gasType - Fuel name shown above the bar.
+ * @param {number[]} index - Five breakpoints: minimum, Q1, median, Q3 and maximum.
+ * @param {string[]} colors - Five colours matching the breakpoints.
+ * @returns {HTMLElement} The created element.
+ */
+function buildColorbar(container, gasType, index, colors) {
+    var last = colors.length - 1;
+    var stops = colors.map(function (c, i) { return c + ' ' + (i / last * 100).toFixed(1) + '%'; });
+    var labels = index.map(function (v, i) {
+        return '<span style="left:' + (i / last * 100).toFixed(1) + '%">' + v.toFixed(1) + '</span>';
+    });
+    var el = document.createElement('div');
+    el.className = 'cbar';
+    el.innerHTML = gasType + ' (¢/L)<div class="cbar-track"><div class="cbar-bar" style="background:linear-gradient(to right,' +
+        stops.join(',') + ')"></div><div class="cbar-labels">' + labels.join('') + '</div></div>';
+    container.appendChild(el);
+    return el;
+}
+</script>
