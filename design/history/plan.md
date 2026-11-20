@@ -1,6 +1,6 @@
 # Gas Price History: Plan
 
-_Status: draft 14, 2026-11-19. Iterating._
+_Status: draft 15, 2026-11-19. Phase 1 complete; Phase 2 on hold._
 
 > **Keep this plan current.** Update it whenever a decision is confirmed, something is implemented, or an open question is resolved or added, and add a changelog line with the date. Do it in the same turn as the change, not later.
 
@@ -9,9 +9,12 @@ _Status: draft 14, 2026-11-19. Iterating._
 Add price history to the Quebec Gas Price Map.
 
 - **Phase 1:** line charts of the average (median) price per area over the last 3-7 days.
-- **Phase 2:** a time slider on the existing interactive map that shows prices at the selected time.
+- **Phase 1 (complete, 2026-11-19):** statistics page with line charts of the price per cluster over the last 3-7 days.
+- **Phase 2 (on hold):** a time slider on the existing interactive map that shows prices at the selected time.
 
 ## Decisions so far (confirmed by you)
+
+- **Phase 1 accepted as built (2026-11-19)**, committed as `88a0bb8`. The chart shows the mean with min and max, not the median with IQR planned earlier (see Chart values). Phase 2 is on hold; no slider work until you restart it.
 
 - The script keeps running on the Raspberry Pi 3B+ (32 GB SD card) every 30 minutes (more reliable than GitHub Actions).
 - No Supabase or other hosted database. History is stored locally and the site stays static (precomputed files published with the HTML).
@@ -104,7 +107,7 @@ Implement steps 1-2 and 6 first, compare the result against the frozen snapshot 
 
 ## Chart values
 
-- Cluster value = median with an IQR band (planned; the stats page currently shows min, max and mean, see draft 10). Price at time T = latest change at or before T. Hourly points.
+- Cluster value: **as built** (draft 15), the mean with a min-max band, hourly points, Régulier only. The median with an IQR band was planned in draft 2-10 but is not implemented; accepted as-is for Phase 1. Price at time T = latest change at or before T.
 - One cluster set (fitted on Régulier) for all three fuels.
 
 ## Outputs (static, next to `index.html`)
@@ -144,13 +147,14 @@ Implement steps 1-2 and 6 first, compare the result against the frozen snapshot 
 2. ~~`history.py`: SQLite store (record run, change detection, retention)~~ (done: `scripts/history.py`, wired into `main.py`)
 3. ~~Cluster freezing/assignment, integrated into `main.py`~~ (done, draft 10; no quality report yet; **needs rework** for history features, steps 6-8)
 4. ~~Export series and add the chart~~ (done, draft 10: embedded in `stats.html`)
-5. Phase 2: export per-station changes and add the slider
+5. Phase 2: export per-station changes and add the slider. **On hold** (draft 15).
 6. ~~History-based clustering, part 1~~ (done, draft 14): `hourly_prices` moved into `history.py`; trajectory features in `clustering.fit`; `freeze_clusters` fits from the database; quality report with split-half scores (see the proposal).
 7. ~~`preview.py --history/--snapshot`~~ (done, draft 14).
 8. Compare the history fit with the frozen snapshot clusters (quality report); then `freeze --force` on the Pi. **Next.**
 
 ## Changelog
 
+- 2026-11-19: draft 15. Phase 1 accepted and committed as `88a0bb8` (statistics page, cluster charts, shared navbar and colourbar, dev-only Playwright dependency). The chart is the mean with min and max, not the median with IQR; that change is accepted for Phase 1. Phase 2 (time slider) is on hold. Build order step 8 (compare history fit with the frozen clusters, then re-freeze on the Pi) is unchanged and still open.
 - 2026-11-19: draft 14. Clustering scripts match the plan. `history.py` gains `hourly_prices` (moved from `stats.py`), `epoch_seconds`, `fit_grid` and `span_hours`. `clustering.py` gains `history_features`, `hourly_premium`, `load_history_fit`, `cluster_quality` and `quality_lines`; `fit` and `fit_target` take an optional hourly premium matrix; `Params` gains `history_weight` (3) and `min_coverage` (0.5); `report` adds a within-cluster `corr` column given a premium matrix. `freeze_clusters` fits from the database (no network), over the last `FIT_DAYS` (3) days, refuses under `MIN_FIT_HOURS` (24), and prints in-sample and split-half scores; stations with under 50% of the hours priced are left NULL and placed by proximity. `preview.py` gains `--history` (default when at least 24 h exist) and `--snapshot`. Tested on a copy of the 95 h database: 20 clusters, 960 of 961 stations fitted, shape R² 0.301 in sample and 0.302 out of sample, within-cluster correlation 0.43 and 0.46. The frozen clusters on the Pi have not been re-frozen.
 - 2026-11-19: draft 13. Decisions: (1) fit clusters on the hourly Régulier premium over the most recent 3 days, or as much as is available (resolves OQ 11 and OQ 8: raw trajectory, no hour-of-day profile); the 7-day re-run is no longer a precondition; (2) grades other than Régulier are out of scope (resolves OQ 9). The proposal is no longer on hold and `FIT_DAYS` is 3 (was 7). Open question 10 now starts at `w = 3`. Nothing in `scripts/` changed yet.
 - 2026-11-19: draft 12. History grew to 191 runs (95 h, about 4 days); `export_history.py`, `analysis.py` and `ward_experiment.py` re-run, README and plan updated. The 00:20 jump repeats on all 4 nights. History-based features (trajectory, shape-only) do **not** clearly beat the snapshot or geography alone (out-of-sample shape R² 0.30-0.31 for the four best variants; window-average premium lower at 0.27), and clusterings agree less with each other than at 27 h (adjusted Rand 0.80-0.89). The draft 11 decision to fit on history is therefore on hold; steps 1-8 of the proposal are not implemented and the frozen snapshot clusters stay. `analysis.py` now drops stations that joined mid-window (962 and 963), which broke the SVD. The README's PC1/PC2 description was rewritten for the 4-day fit (PC2 is a slow drift, not a mid-morning bump). New `snapshot_timing.py` tests whether the snapshot time matters: it does (shape R² 0.229-0.308 across 32 snapshot times, median equal to geography). Nothing in `scripts/` changed.
