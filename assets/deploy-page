@@ -22,6 +22,9 @@ echo -e "${CYAN}[PRODUCTION] Building new map...${RESET}"
 rm -rf build/*
 "$HOME/.local/bin/uv" run --project "$(pwd)" main.py --no-history
 
+# Run additional actions script
+./assets/additional-actions PRODUCTION
+
 # Deploy build folder
 echo -e "${CYAN}[PRODUCTION] Deploying build folder...${RESET}"
 cd build
@@ -45,6 +48,9 @@ git pull
 echo -e "${CYAN}[PREVIEW] Building new map...${RESET}"
 rm -rf build/*
 "$HOME/.local/bin/uv" run --project "$(pwd)" main.py
+
+# Run additional actions script
+./assets/additional-actions PREVIEW
 
 # Deploy build folder into preview branch
 echo -e "${CYAN}[PREVIEW] Deploying build folder...${RESET}"

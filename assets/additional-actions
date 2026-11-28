@@ -1,0 +1,13 @@
+#!/bin/bash
+
+GREEN='\e[1;32m'
+CYAN='\e[1;36m'
+RESET='\e[0m'
+
+BRANCH=$1
+
+# Copy the _headers file to the build folder, if it exists
+if [ -f "assets/_headers" ]; then
+    echo -e "${CYAN}[${BRANCH}] Copying _headers file to build folder...${RESET}"
+    cp assets/_headers build/_headers
+fi
